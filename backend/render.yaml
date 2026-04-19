@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: lumiq-api
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt -r requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SUPABASE_DB_URL
+        sync: false
+      - key: GOOGLE_SHEET_NAME
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false

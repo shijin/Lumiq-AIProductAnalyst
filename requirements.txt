@@ -13,10 +13,8 @@ deep-translator
 vaderSentiment
 pyspellchecker
 sentence-transformers
-hdbscan
 numpy
 scikit-learn
 fastapi
 uvicorn
 python-multipart
-ollama

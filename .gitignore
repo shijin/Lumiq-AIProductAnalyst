@@ -1,0 +1,31 @@
+# ── Python ────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.Python
+venv/
+env/
+.venv/
+*.db
+*.sqlite
+
+# ── Environment variables ─────────────────
+.env
+frontend/.env.local
+
+# ── Google credentials ────────────────────
+config/google_credentials.json
+
+# ── ChromaDB ──────────────────────────────
+chroma/
+
+# ── Next.js ───────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# ── IDE & OS ──────────────────────────────
+.idea/
+.vscode/
+.DS_Store
+*.log

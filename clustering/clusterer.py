@@ -1,24 +1,24 @@
 import numpy as np
 import chromadb
-import hdbscan
-import ollama
+from sentence_transformers import SentenceTransformer
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 from anthropic import Anthropic
 import json
 
 from db.init_db import get_session
 from db.schema import CleanedFeedback, Cluster, FeedbackClusterMap
-from config.settings import ANTHROPIC_API_KEY, OLLAMA_EMBEDDING_MODEL
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from config.settings import ANTHROPIC_API_KEY
 
 # ── Client setup ──────────────────────────────────────────────────
 chroma_client = chromadb.Client()
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 # ── Constants ─────────────────────────────────────────────────────
 CHROMA_COLLECTION = "lumiq_feedback"
-MIN_CLUSTERS = 3        # minimum clusters to consider
-MAX_CLUSTERS = 12       # maximum clusters to consider
+MIN_CLUSTERS = 3
+MAX_CLUSTERS = 12
 
 
 # ── Step 1: Load feedback from DB ────────────────────────────────
@@ -27,6 +27,7 @@ def load_cleaned_feedback():
     rows = session.query(CleanedFeedback).all()
     session.close()
     return rows
+
 
 # ── Step 1b: Deduplicate feedback ────────────────────────────────
 def deduplicate_feedback(rows: list) -> tuple[list[str], dict[str, list[int]]]:
@@ -52,28 +53,21 @@ def deduplicate_feedback(rows: list) -> tuple[list[str], dict[str, list[int]]]:
 
     return unique_texts, text_to_ids
 
-# ── Step 2: Generate embeddings via Ollama (local) ───────────────
+
+# ── Step 2: Generate embeddings ──────────────────────────────────
 def generate_embeddings(texts: list[str]) -> np.ndarray:
     """
-    Generate embeddings locally using Ollama.
-    Zero data leaves your machine.
+    Generate embeddings using sentence-transformers.
+    Runs locally on the server — no external API needed.
     """
-    print(f"  Generating embeddings for {len(texts)} texts (local)...")
-    all_embeddings = []
-
-    for i, text in enumerate(texts):
-        response = ollama.embeddings(
-            model=OLLAMA_EMBEDDING_MODEL,
-            prompt=text
-        )
-        all_embeddings.append(response["embedding"])
-
-        # Progress indicator every 10 rows
-        if (i + 1) % 10 == 0:
-            print(f"  Embedded {i + 1}/{len(texts)} rows...")
-
-    print(f"  All {len(texts)} embeddings generated locally.")
-    return np.array(all_embeddings)
+    print(f"  Generating embeddings for {len(texts)} texts...")
+    embeddings = embedder.encode(
+        texts,
+        show_progress_bar=False,
+        batch_size=32
+    )
+    print(f"  All {len(texts)} embeddings generated.")
+    return np.array(embeddings)
 
 
 # ── Step 3: Store in ChromaDB ────────────────────────────────────
@@ -99,7 +93,7 @@ def store_in_chroma(
     return collection
 
 
-# ── Step 4: K-Means with Elbow Method ───────────────────────────
+# ── Step 4: K-Means with Silhouette ─────────────────────────────
 def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
     """
     Find optimal number of clusters using Silhouette Score,
@@ -112,7 +106,6 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
     best_k = MIN_CLUSTERS
     best_score = -1
 
-    scores = []
     for k in range(MIN_CLUSTERS, max_k + 1):
         kmeans = KMeans(
             n_clusters=k,
@@ -121,7 +114,6 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
         )
         labels = kmeans.fit_predict(embeddings)
         score = silhouette_score(embeddings, labels)
-        scores.append((k, score))
         print(f"    k={k} → silhouette score: {score:.4f}")
 
         if score > best_score:
@@ -138,7 +130,6 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
     )
     labels = final_kmeans.fit_predict(embeddings)
 
-    # Show cluster sizes
     for cid in range(best_k):
         count = list(labels).count(cid)
         print(f"    Cluster {cid}: {count} unique texts")
@@ -146,37 +137,7 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
     return labels
 
 
-# ── Step 5: Assign outliers to nearest cluster ───────────────────
-def assign_outliers(
-    embeddings: np.ndarray,
-    labels: np.ndarray
-) -> np.ndarray:
-    unique_clusters = sorted(set(labels) - {-1})
-
-    if not unique_clusters:
-        print("  No clusters found — assigning all to cluster 0.")
-        return np.zeros(len(labels), dtype=int)
-
-    centroids = np.array([
-        embeddings[labels == c].mean(axis=0)
-        for c in unique_clusters
-    ])
-
-    updated_labels = labels.copy()
-    outliers_reassigned = 0
-
-    for i, label in enumerate(labels):
-        if label == -1:
-            distances = np.linalg.norm(centroids - embeddings[i], axis=1)
-            nearest = unique_clusters[np.argmin(distances)]
-            updated_labels[i] = nearest
-            outliers_reassigned += 1
-
-    print(f"  Outliers reassigned : {outliers_reassigned}")
-    return updated_labels
-
-
-# ── Step 6: Label clusters with Claude ──────────────────────────
+# ── Step 5: Label clusters with Claude ──────────────────────────
 def label_clusters_with_claude(
     cluster_texts: dict[int, list[str]]
 ) -> dict[int, str]:
@@ -188,7 +149,7 @@ def label_clusters_with_claude(
 
     cluster_input = ""
     for cluster_id, texts in cluster_texts.items():
-        samples = texts[:5]  # max 5 samples per cluster
+        samples = texts[:5]
         cluster_input += f"\nCluster {cluster_id}:\n"
         cluster_input += "\n".join(f"  - {t}" for t in samples)
 
@@ -235,7 +196,7 @@ Clusters to label:
         return {cid: f"Cluster {cid}" for cid in cluster_texts.keys()}
 
 
-# ── Step 7: Save clusters to DB ──────────────────────────────────
+# ── Step 6: Save clusters to DB ──────────────────────────────────
 def save_clusters_to_db(
     labels: np.ndarray,
     cluster_label_map: dict[int, str],
@@ -245,6 +206,7 @@ def save_clusters_to_db(
     print("  Saving clusters to database...")
     session = get_session()
 
+    # Clear existing data for clean re-runs
     session.query(FeedbackClusterMap).delete()
     session.query(Cluster).delete()
     session.commit()
@@ -269,13 +231,13 @@ def save_clusters_to_db(
         cluster_obj = Cluster(
             cluster_label=label,
             representative_text=representative,
-            feedback_count=total_count      # reflects true frequency
+            feedback_count=total_count
         )
         session.add(cluster_obj)
         session.flush()
         cluster_db_map[cluster_id] = cluster_obj.id
 
-    # Map ALL 98 original rows to their cluster
+    # Map ALL original rows to their cluster
     for i, text in enumerate(unique_texts):
         cluster_id = int(labels[i])
         db_cluster_id = cluster_db_map[cluster_id]
@@ -292,10 +254,11 @@ def save_clusters_to_db(
     session.close()
     print(f"  Saved {len(unique_cluster_ids)} clusters to database.")
 
+
 # ── Main orchestrator ─────────────────────────────────────────────
 def cluster_all():
     print("Starting clustering pipeline...")
-    print(f"Embedding model : {OLLAMA_EMBEDDING_MODEL} (local)")
+    print(f"Embedding model : all-MiniLM-L6-v2 (sentence-transformers)")
     print(f"Clustering      : K-Means + Silhouette (auto-detect)")
     print(f"Labelling       : Claude Haiku\n")
 
@@ -315,7 +278,7 @@ def cluster_all():
     unique_ids = list(range(len(unique_texts)))
     store_in_chroma(unique_texts, embeddings, unique_ids)
 
-    # 5. Cluster with K-Means (no outliers — every text gets assigned)
+    # 5. Cluster with K-Means
     labels = cluster_embeddings(embeddings)
 
     # 6. Build cluster → texts map for Claude

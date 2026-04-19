@@ -9,7 +9,3 @@ services:
         sync: false
       - key: SUPABASE_DB_URL
         sync: false
-      - key: GOOGLE_SHEET_NAME
-        sync: false
-      - key: VOYAGE_API_KEY
-        sync: false

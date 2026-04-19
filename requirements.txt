@@ -1,5 +1,6 @@
 langchain
 langchain-anthropic
+anthropic
 chromadb
 psycopg2-binary
 sqlalchemy
@@ -15,4 +16,7 @@ sentence-transformers
 hdbscan
 numpy
 scikit-learn
+fastapi
+uvicorn
+python-multipart
 ollama

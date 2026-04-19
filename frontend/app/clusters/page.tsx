@@ -177,9 +177,9 @@ export default function ClustersPage() {
                         fontSize: 12,
                         color: 'var(--text-primary)'
                       }}
-                      formatter={(v: number) => [
-                        `${v} rows (${Math.round((v/totalFeedback)*100)}%)`,
-                        ''
+                      formatter={(v) => [
+                      `${Number(v)} rows (${Math.round((Number(v)/totalFeedback)*100)}%)`,
+                      ''
                       ]}
                     />
                   </PieChart>
@@ -222,7 +222,7 @@ export default function ClustersPage() {
                         fontSize: 12,
                         color: 'var(--text-primary)'
                       }}
-                      formatter={(v: number) => [v, 'Feedback rows']}
+                      formatter={(v) => [Number(v), 'Feedback rows']}
                     />
                     <Bar dataKey="count" radius={[6, 6, 0, 0]}
                       animationBegin={300} animationDuration={800}>

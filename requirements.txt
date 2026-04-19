@@ -18,3 +18,4 @@ scikit-learn
 fastapi
 uvicorn
 python-multipart
+requests

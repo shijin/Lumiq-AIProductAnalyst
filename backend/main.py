@@ -6,18 +6,16 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from backend.state import pipeline_state
-from backend.pipeline import run_full_pipeline
+from backend.pipeline import run_full_pipeline, clear_all_data
 from db.init_db import get_session
 from db.schema import Insight, Cluster
 
-
-# ── App setup ────────────────────────────────────────────────────
 app = FastAPI(
     title="Lumiq API",
     description="AI Product Analyst — Pipeline API",
@@ -26,82 +24,119 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # tighten in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-# ── Request models ───────────────────────────────────────────────
 class AnalyseRequest(BaseModel):
-    sheet_name: str             # exact Google Sheet name
+    sheet_name: str
 
 
-# ── Routes ───────────────────────────────────────────────────────
+class SheetURLRequest(BaseModel):
+    sheet_url: str
+
 
 @app.get("/")
 def root():
-    return {
-        "name": "Lumiq API",
-        "version": "1.0.0",
-        "status": "running"
-    }
+    return {"name": "Lumiq API", "version": "1.0.0", "status": "running"}
 
 
+# ── Sheet name (existing) ────────────────────────────────────────
 @app.post("/api/analyse")
 def start_analysis(request: AnalyseRequest):
-    """
-    Trigger the full pipeline for a given Google Sheet name.
-    Runs asynchronously — poll /api/status for progress.
-    """
     if pipeline_state.running:
-        raise HTTPException(
-            status_code=409,
-            detail="Pipeline is already running. Wait for it to complete."
-        )
-
+        raise HTTPException(status_code=409,
+            detail="Pipeline already running.")
     if not request.sheet_name.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="sheet_name cannot be empty."
-        )
+        raise HTTPException(status_code=400,
+            detail="sheet_name cannot be empty.")
 
-    # Run pipeline in background thread
     thread = threading.Thread(
         target=run_full_pipeline,
-        args=(request.sheet_name.strip(),),
+        kwargs={
+            "source_type": "sheet_name",
+            "sheet_name": request.sheet_name.strip()
+        },
         daemon=True
     )
     thread.start()
-
-    return {
-        "message": "Pipeline started",
-        "sheet_name": request.sheet_name.strip()
-    }
+    return {"message": "Pipeline started", "source": "sheet_name",
+            "sheet_name": request.sheet_name.strip()}
 
 
+# ── CSV upload ───────────────────────────────────────────────────
+@app.post("/api/analyse/csv")
+async def start_analysis_csv(file: UploadFile = File(...)):
+    if pipeline_state.running:
+        raise HTTPException(status_code=409,
+            detail="Pipeline already running.")
+
+    if not file.filename.endswith('.csv'):
+        raise HTTPException(status_code=400,
+            detail="Only CSV files are supported.")
+
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400,
+            detail="Uploaded file is empty.")
+
+    thread = threading.Thread(
+        target=run_full_pipeline,
+        kwargs={
+            "source_type": "csv",
+            "csv_content": content,
+            "csv_filename": file.filename
+        },
+        daemon=True
+    )
+    thread.start()
+    return {"message": "Pipeline started", "source": "csv",
+            "filename": file.filename}
+
+
+# ── Public Google Sheet URL ──────────────────────────────────────
+@app.post("/api/analyse/sheet-url")
+def start_analysis_sheet_url(request: SheetURLRequest):
+    if pipeline_state.running:
+        raise HTTPException(status_code=409,
+            detail="Pipeline already running.")
+
+    if "docs.google.com/spreadsheets" not in request.sheet_url:
+        raise HTTPException(status_code=400,
+            detail="Please provide a valid Google Sheets URL.")
+
+    thread = threading.Thread(
+        target=run_full_pipeline,
+        kwargs={
+            "source_type": "sheet_url",
+            "sheet_url": request.sheet_url.strip()
+        },
+        daemon=True
+    )
+    thread.start()
+    return {"message": "Pipeline started", "source": "sheet_url"}
+
+
+# ── Status ───────────────────────────────────────────────────────
 @app.get("/api/status")
 def get_status():
-    """Poll this endpoint for pipeline progress."""
     return pipeline_state.to_dict()
 
 
+# ── Insights ─────────────────────────────────────────────────────
 @app.get("/api/insights")
 def get_insights():
-    """Return all insights with cluster info for frontend refresh."""
     session = get_session()
     try:
         insights = session.query(Insight).order_by(
-            Insight.priority_rank
-        ).all()
-
+            Insight.priority_rank).all()
         result = []
         for ins in insights:
             cluster = session.query(Cluster).filter_by(
-                id=ins.cluster_id
-            ).first()
-
+                id=ins.cluster_id).first()
             result.append({
                 "id": ins.id,
                 "cluster_id": ins.cluster_id,
@@ -116,89 +151,62 @@ def get_insights():
                 "priority_rank": ins.priority_rank,
                 "evidence": ins.evidence,
             })
-
         return {"insights": result, "total": len(result)}
-
     finally:
         session.close()
 
 
+# ── Export CSV ───────────────────────────────────────────────────
 @app.get("/api/export")
 def export_insights():
-    """Download all insights as a CSV file."""
     session = get_session()
     try:
         insights = session.query(Insight).order_by(
-            Insight.priority_rank
-        ).all()
-
+            Insight.priority_rank).all()
         output = io.StringIO()
         writer = csv.writer(output)
-
-        # Header
         writer.writerow([
-            "Priority Rank",
-            "Cluster",
-            "Feedback Count",
-            "Root Cause",
-            "Recommendation",
-            "Impact Score",
-            "Frequency Score",
-            "Severity Score",
-            "Confidence Score",
-            "Evidence"
+            "Priority Rank", "Cluster", "Feedback Count",
+            "Root Cause", "Recommendation", "Impact Score",
+            "Frequency Score", "Severity Score",
+            "Confidence Score", "Evidence"
         ])
-
-        # Rows
         for ins in insights:
             cluster = session.query(Cluster).filter_by(
-                id=ins.cluster_id
-            ).first()
+                id=ins.cluster_id).first()
             writer.writerow([
                 ins.priority_rank,
                 cluster.cluster_label if cluster else "",
                 cluster.feedback_count if cluster else 0,
-                ins.root_cause,
-                ins.recommendation,
+                ins.root_cause, ins.recommendation,
                 round(ins.impact_score or 0, 3),
                 round(ins.frequency_score or 0, 3),
                 round(ins.severity_score or 0, 3),
                 round(ins.confidence_score or 0, 3),
                 ins.evidence,
             ])
-
         output.seek(0)
         return StreamingResponse(
             io.BytesIO(output.getvalue().encode()),
             media_type="text/csv",
-            headers={
-                "Content-Disposition": "attachment; filename=lumiq_insights.csv"
-            }
+            headers={"Content-Disposition":
+                     "attachment; filename=lumiq_insights.csv"}
         )
-
     finally:
         session.close()
 
 
+# ── Reset ────────────────────────────────────────────────────────
 @app.delete("/api/reset")
 def reset_data():
-    """Clear all pipeline data. Called before new analysis."""
     if pipeline_state.running:
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot reset while pipeline is running."
-        )
-    from backend.pipeline import clear_all_data
+        raise HTTPException(status_code=409,
+            detail="Cannot reset while pipeline is running.")
     clear_all_data()
     return {"message": "All data cleared successfully."}
 
 
-# ── Run ──────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "backend.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+    uvicorn.run("backend.main:app", host="0.0.0.0",
+                port=8000, reload=True)

@@ -23,6 +23,31 @@ export async function startAnalysis(sheetName: string): Promise<void> {
   }
 }
 
+export async function startAnalysisCSV(file: File): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_URL}/api/analyse/csv`, {
+    method: 'POST',
+    body: formData
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || 'Failed to start CSV analysis')
+  }
+}
+
+export async function startAnalysisSheetURL(sheetUrl: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/analyse/sheet-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sheet_url: sheetUrl })
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || 'Failed to start sheet URL analysis')
+  }
+}
+
 export async function getPipelineStatus(): Promise<PipelineStatus> {
   const res = await fetch(`${API_URL}/api/status`)
   if (!res.ok) throw new Error('Failed to get status')

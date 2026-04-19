@@ -8,7 +8,8 @@ from db.init_db import get_session
 from db.schema import RawFeedback
 from config.settings import GOOGLE_CREDENTIALS_PATH, GOOGLE_SHEET_NAME
 import re
-
+import io
+import requests as req
 
 # ── Google Sheets auth ────────────────────────────────────────────
 def get_sheet_data(sheet_name: str) -> pd.DataFrame:
@@ -113,10 +114,20 @@ def ingest_from_google_sheets():
     print(f"Total rows fetched: {len(df)}")
 
     # Validate required columns
-    required_cols = {"feedback_text", "submitted_at", "source"}
-    if not required_cols.issubset(df.columns):
-        missing = required_cols - set(df.columns)
-        raise ValueError(f"Missing columns in sheet: {missing}")
+    # New — flexible, only needs feedback_text
+    if "feedback_text" not in df.columns:
+        raise ValueError(
+            "Sheet must have a 'feedback_text' column. "
+            f"Found columns: {list(df.columns)}"
+        )
+
+    # Use source column if present, otherwise default to 'google_sheets'
+    if "source" not in df.columns:
+        df["source"] = "google_sheets"
+
+    # Use submitted_at if present, otherwise use current time
+    if "submitted_at" not in df.columns:
+        df["submitted_at"] = datetime.now()
 
     session = get_session()
     inserted = 0
@@ -162,6 +173,121 @@ def ingest_from_google_sheets():
     print(f"  Inserted : {inserted}")
     print(f"  Skipped  : {skipped} (empty or duplicate)")
 
+
+def ingest_from_dataframe(df: pd.DataFrame, source: str = "csv_upload"):
+    """
+    Ingest feedback from any pandas DataFrame.
+    Only requires 'feedback_text' column.
+    All other columns are optional.
+    """
+    # Validate minimum required column
+    if "feedback_text" not in df.columns:
+        raise ValueError(
+            f"DataFrame must have a 'feedback_text' column. "
+            f"Found: {list(df.columns)}"
+        )
+
+    # Add optional columns with defaults if missing
+    if "source" not in df.columns:
+        df["source"] = source
+    if "submitted_at" not in df.columns:
+        df["submitted_at"] = datetime.now()
+
+    session = get_session()
+    inserted = 0
+    skipped = 0
+
+    for _, row in df.iterrows():
+        raw_text = str(row["feedback_text"]).strip()
+        source_val = str(row["source"]).strip()
+
+        if not raw_text or raw_text.lower() in ["nan", "none", ""]:
+            skipped += 1
+            continue
+
+        if already_ingested(session, raw_text, source_val):
+            skipped += 1
+            continue
+
+        try:
+            submitted_at = pd.to_datetime(row["submitted_at"])
+        except Exception:
+            submitted_at = datetime.now()
+
+        language = detect_language(raw_text)
+
+        record = RawFeedback(
+            source=source_val,
+            raw_text=raw_text,
+            language=language,
+            submitted_at=submitted_at
+        )
+        session.add(record)
+        inserted += 1
+
+    session.commit()
+    session.close()
+
+    print(f"Ingestion complete. Inserted: {inserted}, Skipped: {skipped}")
+    return inserted
+
+
+def ingest_from_csv_file(file_content: bytes, filename: str = "upload.csv"):
+    """Ingest feedback from uploaded CSV bytes."""
+    try:
+        df = pd.read_csv(io.BytesIO(file_content))
+    except Exception as e:
+        raise ValueError(f"Could not parse CSV file: {e}")
+
+    print(f"CSV loaded: {len(df)} rows, columns: {list(df.columns)}")
+    return ingest_from_dataframe(df, source=f"csv:{filename}")
+
+
+def ingest_from_public_sheet_url(url: str):
+    """
+    Ingest feedback from a public Google Sheet URL.
+    Converts the URL to CSV export format — no auth needed.
+    """
+    try:
+        # Extract sheet ID from URL
+        # Handles: /spreadsheets/d/SHEET_ID/edit or /spreadsheets/d/SHEET_ID/
+        import re
+        match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url)
+        if not match:
+            raise ValueError(
+                "Invalid Google Sheet URL. "
+                "Format: https://docs.google.com/spreadsheets/d/SHEET_ID/..."
+            )
+
+        sheet_id = match.group(1)
+
+        # Extract gid (tab ID) if present
+        gid_match = re.search(r'gid=(\d+)', url)
+        gid = gid_match.group(1) if gid_match else '0'
+
+        # Build CSV export URL
+        csv_url = (
+            f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+            f"/export?format=csv&gid={gid}"
+        )
+
+        print(f"Fetching public sheet: {csv_url}")
+        response = req.get(csv_url, timeout=30)
+
+        if response.status_code != 200:
+            raise ValueError(
+                "Could not access Google Sheet. "
+                "Make sure the sheet is set to 'Anyone with the link can view'."
+            )
+
+        df = pd.read_csv(io.StringIO(response.text))
+        print(f"Sheet loaded: {len(df)} rows, columns: {list(df.columns)}")
+        return ingest_from_dataframe(df, source="google_sheet_url")
+
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"Failed to fetch Google Sheet: {e}")
 
 if __name__ == "__main__":
     ingest_from_google_sheets()

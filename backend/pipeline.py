@@ -1,7 +1,7 @@
 import sys
 import os
+import threading
 
-# Add project root to path so we can import existing modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.state import pipeline_state
@@ -13,7 +13,6 @@ from db.schema import (
 
 
 def clear_all_data():
-    """Clear all tables before fresh analysis."""
     session = get_session()
     try:
         session.query(Insight).delete()
@@ -30,30 +29,56 @@ def clear_all_data():
         session.close()
 
 
-def run_full_pipeline(sheet_name: str):
+def run_full_pipeline(
+    source_type: str,           # 'sheet_name' | 'csv' | 'sheet_url'
+    sheet_name: str = None,
+    csv_content: bytes = None,
+    csv_filename: str = None,
+    sheet_url: str = None,
+):
     """
-    Run all 9 pipeline modules in sequence.
-    Updates pipeline_state at each step for frontend polling.
+    Run all pipeline modules in sequence.
+    Supports three input types:
+    - sheet_name: existing Google Sheets integration
+    - csv: uploaded CSV file bytes
+    - sheet_url: public Google Sheet URL
     """
     try:
-        pipeline_state.start(sheet_name)
+        display_name = (
+            sheet_name or csv_filename or
+            "Google Sheet URL" or "unknown"
+        )
+        pipeline_state.start(display_name)
 
         # ── Step 1: Clear existing data ──────────────────────────
         pipeline_state.update("Clearing existing data...", 5)
         clear_all_data()
 
-        # ── Step 2: Ingest from Google Sheets ────────────────────
-        pipeline_state.update("Ingesting feedback from Google Sheets...", 15)
-        os.environ["GOOGLE_SHEET_NAME"] = sheet_name
-        from ingestion.ingest import ingest_from_google_sheets
-        ingest_from_google_sheets()
+        # ── Step 2: Ingest ────────────────────────────────────────
+        pipeline_state.update("Ingesting feedback...", 15)
 
-        # ── Step 3: Preprocessing (translate + intent) ───────────
+        if source_type == "sheet_name":
+            os.environ["GOOGLE_SHEET_NAME"] = sheet_name
+            from ingestion.ingest import ingest_from_google_sheets
+            ingest_from_google_sheets()
+
+        elif source_type == "csv":
+            from ingestion.ingest import ingest_from_csv_file
+            ingest_from_csv_file(csv_content, csv_filename)
+
+        elif source_type == "sheet_url":
+            from ingestion.ingest import ingest_from_public_sheet_url
+            ingest_from_public_sheet_url(sheet_url)
+
+        else:
+            raise ValueError(f"Unknown source_type: {source_type}")
+
+        # ── Step 3: Preprocessing ─────────────────────────────────
         pipeline_state.update("Detecting languages and translating...", 30)
         from preprocessing.preprocessor import preprocess_all
         preprocess_all()
 
-        # ── Step 4: Cleaning + sentiment ─────────────────────────
+        # ── Step 4: Cleaning ──────────────────────────────────────
         pipeline_state.update("Cleaning feedback and detecting sentiment...", 45)
         from cleaning.cleaner import clean_all
         clean_all()
@@ -63,22 +88,21 @@ def run_full_pipeline(sheet_name: str):
         from clustering.clusterer import cluster_all
         cluster_all()
 
-        # ── Step 6: Root cause analysis ───────────────────────────
+        # ── Step 6: Root cause ────────────────────────────────────
         pipeline_state.update("Analyzing root causes with AI...", 75)
         from reasoning.analyzer import analyze_all_clusters
         analyze_all_clusters()
 
-        # ── Step 7: Scoring + prioritization ─────────────────────
+        # ── Step 7: Scoring ───────────────────────────────────────
         pipeline_state.update("Scoring and prioritizing insights...", 88)
         from scoring.prioritizer import prioritize_all
         prioritize_all()
 
-        # ── Step 8: Insight generation ────────────────────────────
+        # ── Step 8: Insights ──────────────────────────────────────
         pipeline_state.update("Generating actionable recommendations...", 95)
         from output.reporter import generate_all_insights
         generate_all_insights()
 
-        # ── Done ──────────────────────────────────────────────────
         pipeline_state.complete()
         print("Pipeline completed successfully.")
 

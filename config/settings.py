@@ -11,12 +11,12 @@ GOOGLE_CREDENTIALS_PATH = os.path.join(
 )
 
 # Ollama config — runs locally, no API key needed
-OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
-OLLAMA_BASE_URL = "http://localhost:11434"
+# OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
+#OLLAMA_BASE_URL = "http://localhost:11434"
 
 if not SUPABASE_DB_URL:
     raise ValueError("SUPABASE_DB_URL is not set in .env")
 if not ANTHROPIC_API_KEY:
     raise ValueError("ANTHROPIC_API_KEY is not set in .env")
-if not GOOGLE_SHEET_NAME:
+#if not GOOGLE_SHEET_NAME:
     raise ValueError("GOOGLE_SHEET_NAME is not set in .env")

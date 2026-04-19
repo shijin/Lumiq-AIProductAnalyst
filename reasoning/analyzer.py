@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from db.init_db import get_session
 from db.schema import Cluster, CleanedFeedback, FeedbackClusterMap, Insight
 from config.settings import ANTHROPIC_API_KEY
+import concurrent.futures
 
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -76,63 +77,8 @@ def get_cluster_feedback_samples(
     return samples
 
 
-def analyze_cluster(cluster: Cluster, samples: list[str]) -> dict:
-    """Call Claude Sonnet to analyze root cause for one cluster."""
-
-    formatted_samples = "\n".join(f"- {s}" for s in samples)
-
-    prompt = ROOT_CAUSE_PROMPT.format(
-        cluster_label=cluster.cluster_label,
-        feedback_samples=formatted_samples
-    )
-
-    try:
-        response = anthropic_client.messages.create(
-            model="claude-sonnet-4-6",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        raw = response.content[0].text.strip()
-
-        # Strip markdown fences if present
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
-
-        result = json.loads(raw)
-
-        # Validate required fields
-        required = [
-            "root_cause", "contributing_factors",
-            "affected_segment", "severity", "confidence"
-        ]
-        for field in required:
-            if field not in result:
-                raise ValueError(f"Missing field: {field}")
-
-        return result
-
-    except Exception as e:
-        print(f"  Root cause analysis failed for '{cluster.cluster_label}': {e}")
-        return {
-            "root_cause": "Unable to determine root cause automatically.",
-            "contributing_factors": [],
-            "affected_segment": "Unknown",
-            "severity": "medium",
-            "confidence": 0.0
-        }
-
-
 def analyze_all_clusters():
-    """
-    Run root cause analysis for all non-positive clusters.
-    Creates one Insight record per cluster.
-    """
     session = get_session()
-
     clusters = session.query(Cluster).all()
 
     if not clusters:
@@ -141,74 +87,78 @@ def analyze_all_clusters():
         return
 
     print(f"Found {len(clusters)} clusters.")
-
-    # Clear existing insights for clean re-runs
     session.query(Insight).delete()
     session.commit()
 
-    analyzed = 0
-    skipped = 0
+    # Filter out positive clusters
+    problem_clusters = [
+        c for c in clusters
+        if not is_positive_cluster(c.cluster_label)
+    ]
+    positive_count = len(clusters) - len(problem_clusters)
 
-    for cluster in clusters:
-        print(f"\nProcessing: '{cluster.cluster_label}'")
-
-        # Skip positive clusters
-        if is_positive_cluster(cluster.cluster_label):
-            print(f"  → Skipping (positive feedback cluster)")
-            skipped += 1
-            continue
-
-        # Get feedback samples
+    # Fetch all samples upfront
+    cluster_data = []
+    for cluster in problem_clusters:
         samples = get_cluster_feedback_samples(session, cluster.id)
-        print(f"  → {len(samples)} unique samples found")
-
-        # Analyze with Claude Sonnet
-        print(f"  → Calling Claude Sonnet for root cause...")
-        analysis = analyze_cluster(cluster, samples)
-
-        # Map severity to numeric score
-        severity_map = {
-            "critical": 1.0,
-            "high": 0.75,
-            "medium": 0.5,
-            "low": 0.25
-        }
-        severity_score = severity_map.get(
-            analysis["severity"], 0.5
-        )
-
-        # Calculate frequency score (feedback_count / total rows)
-        total_rows = session.query(FeedbackClusterMap).count()
-        frequency_score = round(cluster.feedback_count / total_rows, 4)
-
-        # Format contributing factors as evidence
-        evidence = " | ".join(analysis["contributing_factors"])
-
-        # Create insight record
-        insight = Insight(
-            cluster_id=cluster.id,
-            root_cause=analysis["root_cause"],
-            recommendation=None,        # filled in Step 8
-            impact_score=None,          # filled in Step 8
-            frequency_score=frequency_score,
-            severity_score=severity_score,
-            confidence_score=float(analysis["confidence"]),
-            priority_rank=None,         # filled in Step 8
-            evidence=evidence
-        )
-        session.add(insight)
-        session.commit()
-
-        print(f"  → Root cause: {analysis['root_cause'][:80]}...")
-        print(f"  → Severity  : {analysis['severity']}")
-        print(f"  → Confidence: {analysis['confidence']}")
-        analyzed += 1
+        cluster_data.append((cluster, samples))
 
     session.close()
 
+    print(f"Analysing {len(problem_clusters)} clusters in parallel...")
+
+    # Run Claude calls concurrently
+    results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(analyze_cluster, cluster, samples): (cluster, samples)
+            for cluster, samples in cluster_data
+        }
+        for future in concurrent.futures.as_completed(futures):
+            cluster, samples = futures[future]
+            try:
+                analysis = future.result()
+                results.append((cluster, analysis))
+                print(f"  ✓ {cluster.cluster_label}")
+            except Exception as e:
+                print(f"  ✗ {cluster.cluster_label}: {e}")
+                results.append((cluster, {
+                    "root_cause": "Unable to determine root cause.",
+                    "contributing_factors": [],
+                    "affected_segment": "Unknown",
+                    "severity": "medium",
+                    "confidence": 0.0
+                }))
+
+    # Write all results to DB
+    session = get_session()
+    severity_map = {"critical": 1.0, "high": 0.75, "medium": 0.5, "low": 0.25}
+    total_rows = session.query(FeedbackClusterMap).count()
+
+    for cluster, analysis in results:
+        severity_score = severity_map.get(analysis["severity"], 0.5)
+        frequency_score = round(cluster.feedback_count / total_rows, 4)
+        evidence = " | ".join(analysis["contributing_factors"])
+
+        insight = Insight(
+            cluster_id=cluster.id,
+            root_cause=analysis["root_cause"],
+            recommendation=None,
+            impact_score=None,
+            frequency_score=frequency_score,
+            severity_score=severity_score,
+            confidence_score=float(analysis["confidence"]),
+            priority_rank=None,
+            evidence=evidence
+        )
+        session.add(insight)
+
+    session.commit()
+    session.close()
+
     print(f"\nRoot cause analysis complete.")
-    print(f"  Clusters analyzed : {analyzed}")
-    print(f"  Clusters skipped  : {skipped} (positive feedback)")
+    print(f"  Clusters analyzed : {len(results)}")
+    print(f"  Clusters skipped  : {positive_count} (positive)")
 
 
 if __name__ == "__main__":

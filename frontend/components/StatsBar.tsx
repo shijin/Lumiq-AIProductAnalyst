@@ -1,104 +1,134 @@
 'use client'
-
 import { Insight } from '@/lib/types'
-import { MessageSquare, Layers, Lightbulb, Zap } from 'lucide-react'
 import { parseRecommendation } from '@/lib/utils'
+import { MessageSquare, Layers, Lightbulb, Zap, ArrowUpRight } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+function Counter({ to, delay = 0 }: { to: number; delay?: number }) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      let start = 0
+      const step = Math.ceil(to / 40)
+      const id = setInterval(() => {
+        start += step
+        if (start >= to) { setVal(to); clearInterval(id) }
+        else setVal(start)
+      }, 28)
+    }, delay)
+    return () => clearTimeout(t)
+  }, [to, delay])
+  return <>{val}</>
+}
+
 interface Props {
-  stats: {
-    totalFeedback: number
-    totalClusters: number
-    totalInsights: number
-  }
+  stats: { totalFeedback: number; totalClusters: number; totalInsights: number }
   insights: Insight[]
 }
 
-function AnimatedNumber({ value }: { value: number }) {
-  const [display, setDisplay] = useState(0)
-
-  useEffect(() => {
-    const duration = 1000
-    const steps = 30
-    const increment = value / steps
-    let current = 0
-    const timer = setInterval(() => {
-      current += increment
-      if (current >= value) {
-        setDisplay(value)
-        clearInterval(timer)
-      } else {
-        setDisplay(Math.floor(current))
-      }
-    }, duration / steps)
-    return () => clearInterval(timer)
-  }, [value])
-
-  return <span>{display}</span>
-}
-
 export function StatsBar({ stats, insights }: Props) {
-  const quickWins = insights.filter(i => {
-    const rec = parseRecommendation(i.recommendation || '')
-    return rec.quickWin
-  }).length
+  const quickWins = insights.filter(i =>
+    parseRecommendation(i.recommendation || '').quickWin
+  ).length
 
   const cards = [
     {
       label: 'Feedback Analyzed',
       value: stats.totalFeedback,
       icon: MessageSquare,
-      gradient: 'from-blue-500 to-indigo-600',
-      bg: 'bg-blue-50',
-      border: 'border-blue-100',
-      delay: 'delay-100'
+      accent: '#F97316',
+      accentBg: 'rgba(249,115,22,0.1)',
+      borderGlow: 'rgba(249,115,22,0.3)',
+      delay: 100,
+      anim: 'd-100',
+      trend: '+12% this week'
     },
     {
       label: 'Problem Clusters',
       value: stats.totalClusters,
       icon: Layers,
-      gradient: 'from-violet-500 to-purple-600',
-      bg: 'bg-violet-50',
-      border: 'border-violet-100',
-      delay: 'delay-200'
+      accent: '#A78BFA',
+      accentBg: 'rgba(167,139,250,0.1)',
+      borderGlow: 'rgba(167,139,250,0.3)',
+      delay: 180,
+      anim: 'd-150',
+      trend: 'Auto-detected'
     },
     {
       label: 'Insights Generated',
       value: stats.totalInsights,
       icon: Lightbulb,
-      gradient: 'from-amber-500 to-orange-500',
-      bg: 'bg-amber-50',
-      border: 'border-amber-100',
-      delay: 'delay-300'
+      accent: '#60A5FA',
+      accentBg: 'rgba(96,165,250,0.1)',
+      borderGlow: 'rgba(96,165,250,0.3)',
+      delay: 260,
+      anim: 'd-200',
+      trend: 'AI-powered'
     },
     {
       label: 'Quick Wins',
       value: quickWins,
       icon: Zap,
-      gradient: 'from-emerald-500 to-teal-500',
-      bg: 'bg-emerald-50',
-      border: 'border-emerald-100',
-      delay: 'delay-400'
+      accent: '#34D399',
+      accentBg: 'rgba(52,211,153,0.1)',
+      borderGlow: 'rgba(52,211,153,0.3)',
+      delay: 340,
+      anim: 'd-300',
+      trend: 'Act this sprint'
     },
   ]
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-      {cards.map((card) => (
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {cards.map((c) => (
         <div
-          key={card.label}
-          className={`animate-fade-up ${card.delay} bg-white rounded-2xl p-5
-            border ${card.border} card-hover cursor-default`}
+          key={c.label}
+          className={`anim-fade-up ${c.anim} relative overflow-hidden
+            rounded-2xl p-5 cursor-default transition-all duration-300`}
+          style={{
+            background: 'var(--bg-card)',
+            border: `1px solid var(--border)`,
+            boxShadow: `0 0 0 0px ${c.borderGlow}`,
+          }}
+          onMouseEnter={e => {
+            (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 1px ${c.borderGlow}, 0 8px 24px ${c.borderGlow}`
+            ;(e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'
+          }}
+          onMouseLeave={e => {
+            (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 0px ${c.borderGlow}`
+            ;(e.currentTarget as HTMLElement).style.transform = 'translateY(0)'
+          }}
         >
-          <div className={`w-10 h-10 ${card.bg} rounded-xl flex items-center justify-center mb-4`}>
-            <div className={`bg-gradient-to-br ${card.gradient} w-6 h-6 rounded-lg flex items-center justify-center`}>
-              <card.icon className="w-3.5 h-3.5 text-white" />
+          {/* Subtle top accent line */}
+          <div className="absolute top-0 left-0 right-0 h-[2px] rounded-t-2xl"
+            style={{ background: `linear-gradient(90deg, ${c.accent}, transparent)` }}
+          />
+
+          {/* Icon + trend row */}
+          <div className="flex items-center justify-between mb-5">
+            <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
+              style={{ background: c.accentBg }}>
+              <c.icon className="w-4 h-4" style={{ color: c.accent }} />
+            </div>
+            <div className="flex items-center gap-1">
+              <ArrowUpRight className="w-3 h-3" style={{ color: c.accent }} />
+              <span className="text-xs font-medium" style={{ color: c.accent }}>
+                {c.trend}
+              </span>
             </div>
           </div>
-          <div className="font-serif text-3xl text-[#1a1714]">
-            <AnimatedNumber value={card.value} />
+
+          {/* Number */}
+          <div className="font-display text-4xl font-bold mb-1.5"
+            style={{ color: 'var(--text-primary)' }}>
+            <Counter to={c.value} delay={c.delay} />
           </div>
-          <div className="text-xs text-[#6b6560] mt-1 font-medium">{card.label}</div>
+
+          {/* Label */}
+          <p className="text-sm font-medium"
+            style={{ color: 'var(--text-secondary)' }}>
+            {c.label}
+          </p>
         </div>
       ))}
     </div>

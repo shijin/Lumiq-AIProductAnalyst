@@ -96,3 +96,13 @@ export async function getIntentBreakdown() {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
 }
+export async function getPipelineStatus() {
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  try {
+    const res = await fetch(`${API_URL}/api/status`)
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
+}

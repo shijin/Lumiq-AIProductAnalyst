@@ -1,21 +1,10 @@
 import type { Metadata } from 'next'
-import { DM_Sans, DM_Serif_Display } from 'next/font/google'
 import './globals.css'
 import { TooltipProvider } from "@/components/ui/tooltip"
-
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  variable: '--font-dm-sans',
-})
-
-const dmSerif = DM_Serif_Display({
-  subsets: ['latin'],
-  weight: '400',
-  variable: '--font-dm-serif',
-})
+import { ThemeProvider } from '@/components/ThemeProvider'
 
 export const metadata: Metadata = {
-  title: 'Lumiq - AI Product Analyst',
+  title: 'Lumiq — AI Product Analyst',
   description: 'Turn messy user feedback into clear, prioritized product insights',
 }
 
@@ -25,11 +14,20 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={`${dmSans.variable} ${dmSerif.variable} font-sans`}>
-        <TooltipProvider>
-          {children}
-        </TooltipProvider>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://api.fontshare.com" />
+        <link
+          href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@400,500,600,700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>
+        <ThemeProvider>
+          <TooltipProvider>
+            {children}
+          </TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

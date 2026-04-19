@@ -7,6 +7,7 @@ from db.schema import (
     FeedbackClusterMap
 )
 from config.settings import ANTHROPIC_API_KEY
+import concurrent.futures
 
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -168,82 +169,88 @@ def format_final_report(insights_data: list[dict]) -> str:
 
     return "\n".join(lines)
 
-
 def generate_all_insights():
-    """
-    Generate actionable recommendations for all ranked insights.
-    Updates insights.recommendation in DB.
-    Prints final prioritized report.
-    """
     session = get_session()
-
-    # Fetch insights ordered by priority rank
-    insights = session.query(Insight).order_by(
-        Insight.priority_rank
-    ).all()
+    insights = session.query(Insight).order_by(Insight.priority_rank).all()
 
     if not insights:
-        print("No insights found. Run scoring/prioritizer.py first.")
+        print("No insights found.")
         session.close()
         return
 
     total = len(insights)
-    print(f"Generating recommendations for {total} insights...\n")
+    print(f"Generating {total} recommendations in parallel...")
 
+    # Fetch all data upfront
+    insight_data = []
+    for insight in insights:
+        cluster = session.query(Cluster).filter_by(id=insight.cluster_id).first()
+        samples = get_feedback_samples(session, cluster.id)
+        insight_data.append((insight.id, insight, cluster, samples))
+
+    session.close()
+
+    # Run Claude calls concurrently
+    results = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {
+            executor.submit(
+                generate_recommendation, insight, cluster, samples, total
+            ): insight_id
+            for insight_id, insight, cluster, samples in insight_data
+        }
+        for future in concurrent.futures.as_completed(futures):
+            insight_id = futures[future]
+            try:
+                rec = future.result()
+                results[insight_id] = rec
+                print(f"  ✓ Insight #{insight_id}")
+            except Exception as e:
+                print(f"  ✗ Insight #{insight_id}: {e}")
+                results[insight_id] = {
+                    "what_to_fix": "Manual review required.",
+                    "recommended_actions": ["Review feedback manually"],
+                    "success_metric": "To be defined",
+                    "estimated_effort": "medium",
+                    "quick_win": False
+                }
+
+    # Write results to DB
+    session = get_session()
     insights_data = []
 
-    for insight in insights:
-        cluster = session.query(Cluster).filter_by(
-            id=insight.cluster_id
-        ).first()
-
-        print(f"#{insight.priority_rank} {cluster.cluster_label}")
-
-        # Get feedback samples
-        samples = get_feedback_samples(session, cluster.id)
-
-        # Generate recommendation via Claude Sonnet
-        print(f"  → Calling Claude Sonnet...")
-        rec = generate_recommendation(insight, cluster, samples, total)
-
-        # Format recommendation as readable string for DB storage
-        actions_text = " | ".join(rec["recommended_actions"])
+    for insight_id, insight, cluster, _ in insight_data:
+        rec = results.get(insight_id, {})
+        actions_text = " | ".join(rec.get("recommended_actions", []))
         full_recommendation = (
-            f"WHAT TO FIX: {rec['what_to_fix']} | "
+            f"WHAT TO FIX: {rec.get('what_to_fix', '')} | "
             f"ACTIONS: {actions_text} | "
-            f"SUCCESS METRIC: {rec['success_metric']} | "
-            f"EFFORT: {rec['estimated_effort'].upper()} | "
-            f"QUICK WIN: {'Yes' if rec['quick_win'] else 'No'}"
+            f"SUCCESS METRIC: {rec.get('success_metric', '')} | "
+            f"EFFORT: {rec.get('estimated_effort', 'medium').upper()} | "
+            f"QUICK WIN: {'Yes' if rec.get('quick_win') else 'No'}"
         )
 
-        # Update DB
-        insight.recommendation = full_recommendation
-        session.commit()
+        db_insight = session.query(Insight).filter_by(id=insight_id).first()
+        if db_insight:
+            db_insight.recommendation = full_recommendation
 
-        print(f"  → Effort  : {rec['estimated_effort']}")
-        print(
-            f"  → Quick win: {'Yes ✅' if rec['quick_win'] else 'No'}"
-        )
-
-        # Collect for report
         insights_data.append({
             "priority_rank": insight.priority_rank,
             "cluster_label": cluster.cluster_label,
             "root_cause": insight.root_cause,
-            "what_to_fix": rec["what_to_fix"],
-            "recommended_actions": rec["recommended_actions"],
-            "success_metric": rec["success_metric"],
-            "estimated_effort": rec["estimated_effort"],
-            "quick_win": rec["quick_win"]
+            "what_to_fix": rec.get("what_to_fix", ""),
+            "recommended_actions": rec.get("recommended_actions", []),
+            "success_metric": rec.get("success_metric", ""),
+            "estimated_effort": rec.get("estimated_effort", "medium"),
+            "quick_win": rec.get("quick_win", False)
         })
 
+    session.commit()
     session.close()
 
-    # Print final report
     report = format_final_report(insights_data)
     print(report)
-
-    print(f"\n✅ All recommendations written to insights table in Supabase.")
+    print(f"\n✅ All recommendations written to Supabase.")
 
 
 if __name__ == "__main__":

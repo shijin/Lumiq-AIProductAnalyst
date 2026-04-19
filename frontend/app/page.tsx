@@ -1,109 +1,143 @@
 'use client'
-
 import { useEffect, useState } from 'react'
-import { getInsightsWithClusters, getDashboardStats, getSentimentBreakdown, getIntentBreakdown } from '@/lib/data'
+import {
+  getInsightsWithClusters, getDashboardStats,
+  getSentimentBreakdown, getIntentBreakdown,
+  getPipelineStatus
+} from '@/lib/data'
 import { Insight } from '@/lib/types'
 import { InsightCard } from '@/components/InsightCard'
 import { StatsBar } from '@/components/StatsBar'
 import { SentimentChart } from '@/components/SentimentChart'
 import { IntentChart } from '@/components/IntentChart'
-import { Header } from '@/components/Header'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Navbar } from '@/components/Navbar'
+import { AnimatedSection } from '@/components/AnimatedSection'
+import { FileSpreadsheet } from 'lucide-react'
 
 export default function Dashboard() {
-  const [insights, setInsights] = useState<Insight[]>([])
-  const [stats, setStats] = useState<any>(null)
+  const [insights, setInsights]   = useState<Insight[]>([])
+  const [stats, setStats]         = useState<any>(null)
   const [sentiment, setSentiment] = useState<any[]>([])
-  const [intents, setIntents] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [intents, setIntents]     = useState<any[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [pipelineStatus, setPipelineStatus] = useState<any>(null)
 
   useEffect(() => {
-    async function fetchAll() {
-      try {
-        const [insightsData, statsData, sentimentData, intentData] = await Promise.all([
-          getInsightsWithClusters(),
-          getDashboardStats(),
-          getSentimentBreakdown(),
-          getIntentBreakdown()
-        ])
-        setInsights(insightsData)
-        setStats(statsData)
-        setSentiment(sentimentData)
-        setIntents(intentData)
-      } catch (err) {
-        console.error('Failed to fetch data:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchAll()
-  }, [])
+  Promise.all([
+    getInsightsWithClusters(),
+    getDashboardStats(),
+    getSentimentBreakdown(),
+    getIntentBreakdown(),
+    getPipelineStatus(),
+  ]).then(([i, s, sent, int, ps]) => {
+    setInsights(i)
+    setStats(s)
+    setSentiment(sent)
+    setIntents(int)
+    setPipelineStatus(ps)
+  }).catch(console.error)
+    .finally(() => setLoading(false))
+}, [])
 
   return (
-    <div className="min-h-screen bg-[#fafaf8]">
-      <Header />
+    <div style={{ background: 'var(--bg)', minHeight: '100vh' }}
+      className="dot-grid">
+      <Navbar />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-screen-xl mx-auto px-6 py-8 space-y-8">
 
-        {/* Page title */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900">
-            Product Insights
-          </h1>
-          <p className="text-slate-500 text-sm mt-1">
-            AI-analyzed feedback — prioritized for your next sprint
-          </p>
-        </div>
-
-        {/* Stats bar */}
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-2xl" />
-            ))}
+        {/* Page header — immediate */}
+        <AnimatedSection delay={0}>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="font-display text-3xl font-bold"
+                style={{ color: 'var(--text-primary)' }}>
+                Product Insights
+              </h1>
+              <p className="text-sm mt-1.5"
+                style={{ color: 'var(--text-secondary)' }}>
+                AI-analyzed feedback — prioritized for your next sprint
+              </p>
+            </div>
+            {pipelineStatus?.sheet_name && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl card">
+                <FileSpreadsheet className="w-4 h-4"
+                  style={{ color: 'var(--accent)' }} />
+                <span className="text-sm font-semibold"
+                  style={{ color: 'var(--accent)' }}>
+                  {pipelineStatus.sheet_name}
+                </span>
+              </div>
+            )}
           </div>
-        ) : (
-          <StatsBar stats={stats} insights={insights} />
-        )}
+        </AnimatedSection>
 
-        {/* Charts row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {loading ? (
-            <>
-              <Skeleton className="h-64 rounded-2xl" />
-              <Skeleton className="h-64 rounded-2xl" />
-            </>
-          ) : (
-            <>
-              <SentimentChart data={sentiment} />
-              <IntentChart data={intents} />
-            </>
-          )}
-        </div>
+        {/* Stats — staggered */}
+        <AnimatedSection delay={100}>
+          {loading
+            ? <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={i} className="skel h-32" />
+                ))}
+              </div>
+            : <StatsBar stats={stats} insights={insights} />
+          }
+        </AnimatedSection>
 
-        {/* Insights list */}
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-slate-800">
-            Prioritized Insights
-          </h2>
-          <span className="text-xs text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
-            Ranked by impact × frequency × severity
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-48 rounded-2xl" />
-            ))}
+        {/* Charts */}
+        <AnimatedSection delay={200}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {loading
+              ? <>
+                  <div className="skel h-72" />
+                  <div className="skel h-72" />
+                </>
+              : <>
+                  <SentimentChart data={sentiment} />
+                  <IntentChart data={intents} />
+                </>
+            }
           </div>
-        ) : (
-          <div className="space-y-4">
-            {insights.map((insight, index) => (
-              <InsightCard key={insight.id} insight={insight} index={index}/>
-            ))}
+        </AnimatedSection>
+
+        {/* Insights header */}
+        <AnimatedSection delay={300}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-display text-xl font-semibold"
+                style={{ color: 'var(--text-primary)' }}>
+                Prioritized Insights
+              </h2>
+              <p className="text-xs mt-0.5"
+                style={{ color: 'var(--text-muted)' }}>
+                Ranked by impact × frequency × severity
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="live-dot" />
+              <span className="text-xs font-semibold"
+                style={{ color: 'var(--success)' }}>
+                Live
+              </span>
+            </div>
           </div>
-        )}
+        </AnimatedSection>
+
+        {/* Insight cards — each animates individually */}
+        {loading
+          ? <div className="space-y-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="skel h-48" />
+              ))}
+            </div>
+          : <div className="space-y-4 pb-12">
+              {insights.map((ins, i) => (
+                <AnimatedSection key={ins.id} delay={i * 80}>
+                  <InsightCard insight={ins} index={i} />
+                </AnimatedSection>
+              ))}
+            </div>
+        }
 
       </main>
     </div>

@@ -13,7 +13,7 @@ from config.settings import ANTHROPIC_API_KEY
 # ── Client setup ──────────────────────────────────────────────────
 chroma_client = chromadb.Client()
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+embedder = SentenceTransformer('paraphrase-MiniLM-L3-v2')
 
 # ── Constants ─────────────────────────────────────────────────────
 CHROMA_COLLECTION = "lumiq_feedback"

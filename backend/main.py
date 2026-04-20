@@ -17,10 +17,29 @@ from db.init_db import get_session
 from db.schema import Insight, Cluster
 from agent.lumiq_agent import create_lumiq_agent, chat as agent_chat
 
+from contextlib import asynccontextmanager
+from sentence_transformers import SentenceTransformer
+
+# Global preloaded model
+_embedder = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Preload models at startup — not during analysis."""
+    global _embedder
+    print("Preloading sentence-transformers model...")
+    try:
+        _embedder = SentenceTransformer('paraphrase-MiniLM-L3-v2')
+        print("Model preloaded successfully.")
+    except Exception as e:
+        print(f"Model preload warning: {e}")
+    yield
+
 app = FastAPI(
     title="Lumiq API",
-    description="AI Product Analyst — Pipeline API",
-    version="1.0.0"
+    description="AI Product Analyst Pipeline API",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(

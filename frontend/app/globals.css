@@ -230,3 +230,26 @@ h1, h2, h3, h4 {
 .dark .glass {
   background: rgba(0,0,0,0.4) !important;
 }
+
+/* Agent chat table styles */
+.agent-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin: 8px 0;
+}
+
+.agent-table th {
+  text-align: left;
+  padding: 4px 8px;
+  background: var(--bg-card-hover);
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.agent-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}

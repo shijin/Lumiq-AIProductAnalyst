@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Loader2, X, MessageSquare } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface Message {
   role: 'user' | 'agent'
@@ -186,7 +187,9 @@ const sendMessage = async (text?: string) => {
                       lineHeight: '1.6'
                     }}
                   >
+                    <div className="agent-table prose prose-sm max-w-none">
                     <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
                       components={{
                         table: ({node, ...props}) => (
                           <div className="overflow-x-auto my-2">

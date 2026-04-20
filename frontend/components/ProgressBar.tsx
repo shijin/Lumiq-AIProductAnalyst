@@ -160,29 +160,28 @@ export function ProgressBar({ onComplete }: Props) {
   )
 }
 
-    {/* Server restart warning */}
-    {status?.error?.includes('restarted') && (
-      <div className="p-4 rounded-2xl"
-        style={{
-          background: 'var(--warning-light)',
-          border: '1px solid rgba(217,119,6,0.2)'
-        }}>
-        <p className="text-sm font-semibold mb-1"
-          style={{ color: 'var(--warning)' }}>
-          ⚠️ Server Restarted
-        </p>
-        <p className="text-xs"
-          style={{ color: 'var(--text-secondary)' }}>
-          The server restarted during analysis due to memory limits.
-          This happens on first run while models download.
-          Please click Run Analysis again — it will be faster now.
-        </p>
-        <button
-          onClick={() => window.location.href = '/analyse'}
-          className="mt-3 px-4 py-2 rounded-xl text-xs font-semibold
-            text-white transition-all hover:opacity-90"
-          style={{ background: 'var(--warning)' }}>
-          Try Again
-        </button>
-      </div>
-    )}
+    {status && status.error && status.error.includes('restarted') && (
+  <div className="p-4 rounded-2xl"
+    style={{
+      background: 'var(--warning-light)',
+      border: '1px solid rgba(217,119,6,0.2)'
+    }}>
+    <p className="text-sm font-semibold mb-1"
+      style={{ color: 'var(--warning)' }}>
+      ⚠️ Server Restarted
+    </p>
+    <p className="text-xs"
+      style={{ color: 'var(--text-secondary)' }}>
+      The server restarted during analysis due to memory limits.
+      This happens on first run while models download.
+      Please click Run Analysis again — it will be faster now.
+    </p>
+    <button
+      onClick={() => window.location.href = '/analyse'}
+      className="mt-3 px-4 py-2 rounded-xl text-xs font-semibold
+        text-white transition-all hover:opacity-90"
+      style={{ background: 'var(--warning)' }}>
+      Try Again
+    </button>
+  </div>
+)}

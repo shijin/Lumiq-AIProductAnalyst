@@ -14,7 +14,6 @@ langdetect
 deep-translator
 vaderSentiment
 pyspellchecker
-sentence-transformers
 numpy
 scikit-learn
 fastapi

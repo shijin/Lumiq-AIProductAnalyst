@@ -1,10 +1,11 @@
 import numpy as np
 import chromadb
-from sentence_transformers import SentenceTransformer
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from anthropic import Anthropic
 import json
+import os
+import time
 
 from db.init_db import get_session
 from db.schema import CleanedFeedback, Cluster, FeedbackClusterMap
@@ -13,7 +14,6 @@ from config.settings import ANTHROPIC_API_KEY
 # ── Client setup ──────────────────────────────────────────────────
 chroma_client = chromadb.Client()
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
-embedder = SentenceTransformer('paraphrase-MiniLM-L3-v2')
 
 # ── Constants ─────────────────────────────────────────────────────
 CHROMA_COLLECTION = "lumiq_feedback"
@@ -21,7 +21,7 @@ MIN_CLUSTERS = 3
 MAX_CLUSTERS = 12
 
 
-# ── Step 1: Load feedback from DB ────────────────────────────────
+# ── Step 1: Load feedback ─────────────────────────────────────────
 def load_cleaned_feedback():
     session = get_session()
     rows = session.query(CleanedFeedback).all()
@@ -29,16 +29,8 @@ def load_cleaned_feedback():
     return rows
 
 
-# ── Step 1b: Deduplicate feedback ────────────────────────────────
+# ── Step 1b: Deduplicate ──────────────────────────────────────────
 def deduplicate_feedback(rows: list) -> tuple[list[str], dict[str, list[int]]]:
-    """
-    Deduplicate cleaned_text while tracking which original row IDs
-    map to each unique text.
-
-    Returns:
-        unique_texts: list of unique feedback strings
-        text_to_ids: dict mapping unique_text → list of cleaned_feedback ids
-    """
     text_to_ids = {}
     for row in rows:
         text = row.cleaned_text.strip()
@@ -50,34 +42,54 @@ def deduplicate_feedback(rows: list) -> tuple[list[str], dict[str, list[int]]]:
     print(f"  Total rows          : {len(rows)}")
     print(f"  Unique texts        : {len(unique_texts)}")
     print(f"  Duplicates removed  : {len(rows) - len(unique_texts)}")
-
     return unique_texts, text_to_ids
 
 
-# ── Step 2: Generate embeddings ──────────────────────────────────
-def generate_embeddings(texts: list[str]) -> np.ndarray:
+# ── Step 2: Generate embeddings via Claude API ────────────────────
+def generate_embeddings_via_tfidf(texts: list[str]) -> np.ndarray:
     """
-    Generate embeddings using sentence-transformers.
-    Runs locally on the server — no external API needed.
+    Generate embeddings using TF-IDF + SVD.
+    Zero RAM spike — no model download needed.
+    Works entirely with sklearn which is already installed.
     """
     print(f"  Generating embeddings for {len(texts)} texts...")
-    embeddings = embedder.encode(
-        texts,
-        show_progress_bar=False,
-        batch_size=32
+
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import TruncatedSVD
+    from sklearn.preprocessing import normalize
+
+    # TF-IDF vectorization
+    vectorizer = TfidfVectorizer(
+        max_features=500,
+        ngram_range=(1, 2),
+        stop_words='english',
+        min_df=1
     )
+
+    tfidf_matrix = vectorizer.fit_transform(texts)
+
+    # Reduce dimensions with SVD (like LSA)
+    n_components = min(50, len(texts) - 1, tfidf_matrix.shape[1] - 1)
+    n_components = max(n_components, 2)
+
+    svd = TruncatedSVD(n_components=n_components, random_state=42)
+    embeddings = svd.fit_transform(tfidf_matrix)
+
+    # Normalize
+    embeddings = normalize(embeddings)
+
+    print(f"  Embeddings shape: {embeddings.shape}")
     print(f"  All {len(texts)} embeddings generated.")
     return np.array(embeddings)
 
 
-# ── Step 3: Store in ChromaDB ────────────────────────────────────
+# ── Step 3: Store in ChromaDB ─────────────────────────────────────
 def store_in_chroma(
     texts: list[str],
     embeddings: np.ndarray,
     ids: list[int]
 ):
     print("  Storing embeddings in ChromaDB...")
-
     try:
         chroma_client.delete_collection(CHROMA_COLLECTION)
     except Exception:
@@ -93,12 +105,8 @@ def store_in_chroma(
     return collection
 
 
-# ── Step 4: K-Means with Silhouette ─────────────────────────────
+# ── Step 4: K-Means clustering ────────────────────────────────────
 def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
-    """
-    Find optimal number of clusters using Silhouette Score,
-    then apply K-Means clustering.
-    """
     print("  Finding optimal cluster count...")
 
     n_samples = len(embeddings)
@@ -113,6 +121,10 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
             n_init=10
         )
         labels = kmeans.fit_predict(embeddings)
+
+        if len(set(labels)) < 2:
+            continue
+
         score = silhouette_score(embeddings, labels)
         print(f"    k={k} → silhouette score: {score:.4f}")
 
@@ -122,7 +134,6 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
 
     print(f"\n  Optimal clusters    : {best_k} (score: {best_score:.4f})")
 
-    # Final clustering with best K
     final_kmeans = KMeans(
         n_clusters=best_k,
         random_state=42,
@@ -137,14 +148,10 @@ def cluster_embeddings(embeddings: np.ndarray) -> np.ndarray:
     return labels
 
 
-# ── Step 5: Label clusters with Claude ──────────────────────────
+# ── Step 5: Label clusters with Claude ───────────────────────────
 def label_clusters_with_claude(
     cluster_texts: dict[int, list[str]]
 ) -> dict[int, str]:
-    """
-    Send cluster samples to Claude Haiku for labelling.
-    Claude only sees anonymized, clustered themes — not raw user data.
-    """
     print("  Labelling clusters with Claude Haiku...")
 
     cluster_input = ""
@@ -180,8 +187,6 @@ Clusters to label:
         )
 
         raw = response.content[0].text.strip()
-
-        # Strip markdown fences if present
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -196,7 +201,7 @@ Clusters to label:
         return {cid: f"Cluster {cid}" for cid in cluster_texts.keys()}
 
 
-# ── Step 6: Save clusters to DB ──────────────────────────────────
+# ── Step 6: Save to DB ────────────────────────────────────────────
 def save_clusters_to_db(
     labels: np.ndarray,
     cluster_label_map: dict[int, str],
@@ -206,7 +211,6 @@ def save_clusters_to_db(
     print("  Saving clusters to database...")
     session = get_session()
 
-    # Clear existing data for clean re-runs
     session.query(FeedbackClusterMap).delete()
     session.query(Cluster).delete()
     session.commit()
@@ -222,7 +226,6 @@ def save_clusters_to_db(
         representative = cluster_text_samples[0]
         label = cluster_label_map.get(cluster_id, f"Cluster {cluster_id}")
 
-        # Count ALL original rows — not just unique texts
         total_count = sum(
             len(text_to_ids[unique_texts[i]])
             for i in cluster_indices
@@ -237,12 +240,10 @@ def save_clusters_to_db(
         session.flush()
         cluster_db_map[cluster_id] = cluster_obj.id
 
-    # Map ALL original rows to their cluster
     for i, text in enumerate(unique_texts):
         cluster_id = int(labels[i])
         db_cluster_id = cluster_db_map[cluster_id]
         original_ids = text_to_ids[text]
-
         for original_id in original_ids:
             mapping = FeedbackClusterMap(
                 cleaned_id=original_id,
@@ -258,37 +259,28 @@ def save_clusters_to_db(
 # ── Main orchestrator ─────────────────────────────────────────────
 def cluster_all():
     print("Starting clustering pipeline...")
-    print(f"Embedding model : all-MiniLM-L6-v2 (sentence-transformers)")
-    print(f"Clustering      : K-Means + Silhouette (auto-detect)")
-    print(f"Labelling       : Claude Haiku\n")
+    print(f"Embedding : TF-IDF + SVD (zero RAM spike)")
+    print(f"Clustering: K-Means + Silhouette (auto-detect)\n")
 
-    # 1. Load all feedback
     rows = load_cleaned_feedback()
     if not rows:
-        print("No feedback found in cleaned_feedback table.")
+        print("No feedback found.")
         return
 
-    # 2. Deduplicate
     unique_texts, text_to_ids = deduplicate_feedback(rows)
+    embeddings = generate_embeddings_via_tfidf(unique_texts)
 
-    # 3. Generate embeddings
-    embeddings = generate_embeddings(unique_texts)
-
-    # 4. Store in ChromaDB
     unique_ids = list(range(len(unique_texts)))
     store_in_chroma(unique_texts, embeddings, unique_ids)
 
-    # 5. Cluster with K-Means
     labels = cluster_embeddings(embeddings)
 
-    # 6. Build cluster → texts map for Claude
     unique_clusters = sorted(set(labels))
     cluster_texts = {
         cid: [unique_texts[i] for i, l in enumerate(labels) if l == cid]
         for cid in unique_clusters
     }
 
-    # 7. Label with Claude
     cluster_label_map = label_clusters_with_claude(cluster_texts)
 
     print("\n  Cluster labels:")
@@ -299,7 +291,6 @@ def cluster_all():
         )
         print(f"    Cluster {cid} ({count} rows): {label}")
 
-    # 8. Save to DB
     save_clusters_to_db(labels, cluster_label_map, unique_texts, text_to_ids)
 
     print("\nClustering complete.")

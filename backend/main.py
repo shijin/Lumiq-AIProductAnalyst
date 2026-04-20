@@ -31,13 +31,8 @@ except Exception as e:
 # ── Preload embedding model at startup ────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("Preloading sentence-transformers model...")
-    try:
-        from sentence_transformers import SentenceTransformer
-        SentenceTransformer('paraphrase-MiniLM-L3-v2')
-        print("Model preloaded successfully.")
-    except Exception as e:
-        print(f"Model preload warning: {e}")
+    print("Lumiq API starting up...")
+    print("No heavy models to preload - using TF-IDF embeddings.")
     yield
 
 

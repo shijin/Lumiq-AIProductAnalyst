@@ -3,7 +3,6 @@ langchain-anthropic==0.1.23
 langchain-core==0.2.38
 langchain-community==0.2.16
 anthropic
-chromadb
 psycopg2-binary
 sqlalchemy
 pandas

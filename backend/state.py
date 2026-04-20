@@ -14,13 +14,15 @@ def _get_db_state():
         from db.init_db import get_session
         from sqlalchemy import text
         session = get_session()
-        result = session.execute(text(
-            "SELECT state_data FROM pipeline_state WHERE id = 1"
-        ))
-        row = result.fetchone()
-        session.close()
-        if row:
-            return json.loads(row[0])
+        try:
+            result = session.execute(text(
+                "SELECT state_data FROM pipeline_state WHERE id = 1"
+            ))
+            row = result.fetchone()
+            if row:
+                return json.loads(row[0])
+        finally:
+            session.close()  # ← always close
     except Exception:
         pass
     return None
@@ -32,14 +34,16 @@ def _save_db_state(state_dict: dict):
         from db.init_db import get_session
         from sqlalchemy import text
         session = get_session()
-        session.execute(text("""
-            INSERT INTO pipeline_state (id, state_data, updated_at)
-            VALUES (1, :data, NOW())
-            ON CONFLICT (id) DO UPDATE
-            SET state_data = :data, updated_at = NOW()
-        """), {"data": json.dumps(state_dict)})
-        session.commit()
-        session.close()
+        try:
+            session.execute(text("""
+                INSERT INTO pipeline_state (id, state_data, updated_at)
+                VALUES (1, :data, NOW())
+                ON CONFLICT (id) DO UPDATE
+                SET state_data = :data, updated_at = NOW()
+            """), {"data": json.dumps(state_dict)})
+            session.commit()
+        finally:
+            session.close()  # ← always close
     except Exception as e:
         print(f"State save warning: {e}")
 
@@ -65,43 +69,22 @@ class PipelineState:
         self.started_at = datetime.now().isoformat()
         self.completed_at = None
         self.sheet_name = sheet_name
-        self._persist()
 
     def update(self, step: str, progress: int):
         self.current_step = step
         self.progress = progress
         self.completed_steps.append(step)
-        self._persist()
 
     def complete(self):
         self.running = False
         self.current_step = "Analysis complete"
         self.progress = 100
         self.completed_at = datetime.now().isoformat()
-        self._persist()
 
     def fail(self, error: str):
         self.running = False
         self.error = error
         self.current_step = "Pipeline failed"
-        self._persist()
-
-    def _persist(self):
-        """Save current state to Supabase."""
-        _save_db_state(self.to_dict())
-
-    def load_from_db(self):
-        """Load state from Supabase on startup."""
-        data = _get_db_state()
-        if data:
-            self.running = False  # Never resume as running after restart
-            self.current_step = data.get("current_step", "")
-            self.progress = data.get("progress", 0)
-            self.completed_steps = data.get("completed_steps", [])
-            self.error = "Server restarted during analysis. Please run again."
-            self.started_at = data.get("started_at")
-            self.completed_at = data.get("completed_at")
-            self.sheet_name = data.get("sheet_name")
 
     def to_dict(self):
         return {
@@ -118,4 +101,3 @@ class PipelineState:
 
 # Global singleton
 pipeline_state = PipelineState()
-pipeline_state.load_from_db()  # Load persisted state on startup

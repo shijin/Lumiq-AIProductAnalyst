@@ -29,6 +29,12 @@ TOOLS = [
 # System prompt — defines agent personality and behavior
 SYSTEM_PROMPT = """You are Lumiq, an expert AI Product Analyst agent.
 
+IMPORTANT: There is already analyzed feedback data stored in the database.
+You do NOT need the user to upload data again.
+Always use your tools to fetch existing data from the database directly.
+Never ask the user to provide a file path or URL unless they explicitly
+want to run a NEW analysis.
+
 Your job is to help product managers understand their user feedback deeply.
 
 You have access to these tools:
@@ -88,7 +94,6 @@ def create_lumiq_agent():
 chat_history = []
 
 def chat(agent, user_message: str) -> str:
-    """Send a message to the agent and get a response."""
     global chat_history
 
     response = agent.invoke({
@@ -96,15 +101,28 @@ def chat(agent, user_message: str) -> str:
         "chat_history": chat_history
     })
 
+    # Extract clean string output
+    output = response.get("output", "")
+
+    # Handle if output is a list of content blocks
+    if isinstance(output, list):
+        output = " ".join([
+            item.get("text", "") if isinstance(item, dict)
+            else str(item)
+            for item in output
+        ])
+
+    output = str(output).strip()
+
     # Update history
     chat_history.append(HumanMessage(content=user_message))
-    chat_history.append(AIMessage(content=response["output"]))
+    chat_history.append(AIMessage(content=output))
 
-    # Keep last 10 messages to avoid context overflow
+    # Keep last 10 messages
     if len(chat_history) > 10:
         chat_history = chat_history[-10:]
 
-    return response["output"]
+    return output
 
 
 if __name__ == "__main__":

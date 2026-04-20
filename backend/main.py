@@ -235,7 +235,19 @@ def chat_with_agent(request: ChatRequest):
             detail="Message cannot be empty.")
     try:
         response = agent_chat(lumiq_agent, request.message)
-        return {"response": response}
+        # Handle list response format from LangChain
+        if isinstance(response, list):
+            response_text = " ".join([
+                item.get("text", "") if isinstance(item, dict)
+                else str(item)
+                for item in response
+            ])
+        elif isinstance(response, dict):
+            response_text = response.get("output", response.get("text", str(response)))
+        else:
+            response_text = str(response)
+
+        return {"response": response_text.strip()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

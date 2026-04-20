@@ -9,7 +9,7 @@ const STEPS = [
   'Ingesting feedback...',
   'Detecting languages and translating...',
   'Cleaning feedback and detecting sentiment...',
-  'Clustering similar feedback (may take 2-3 mins on first run)...',
+  'Clustering similar feedback...',
   'Analyzing root causes with AI...',
   'Scoring and prioritizing insights...',
   'Generating actionable recommendations...',

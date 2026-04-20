@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Loader2, X, MessageSquare } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   role: 'user' | 'agent'
@@ -10,16 +11,23 @@ interface Message {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
+const QUICK_PROMPTS = [
+  "Give me a summary",
+  "Top 3 problems",
+  "Show only bugs",
+  "Next sprint priorities",
+]
+
 export function AgentChat() {
-  const [open, setOpen]       = useState(false)
+  const [open, setOpen]         = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'agent',
-      content: "Hi! I am Lumiq, your AI Product Analyst. Ask me anything about your feedback data. Try: \"What are the top 3 problems?\" or \"Why is payment ranked first?\"",
+      content: "Hi! I am Lumiq, your AI Product Analyst. Ask me anything about your feedback data.\n\nTry asking:\n- **What are the top 3 problems?**\n- **Give me a summary of the feedback**\n- **Show me only bug reports**",
       timestamp: new Date()
     }
   ])
-  const [input, setInput]     = useState('')
+  const [input, setInput]   = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -27,12 +35,15 @@ export function AgentChat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const sendMessage = async () => {
-    if (!input.trim() || loading) return
-    const userMsg = input.trim()
+  const sendMessage = async (text?: string) => {
+    const userMsg = (text || input).trim()
+    if (!userMsg || loading) return
     setInput('')
+
     setMessages(prev => [...prev, {
-      role: 'user', content: userMsg, timestamp: new Date()
+      role: 'user',
+      content: userMsg,
+      timestamp: new Date()
     }])
     setLoading(true)
 
@@ -42,13 +53,18 @@ export function AgentChat() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: userMsg })
       })
+
+      if (!res.ok) {
+        throw new Error(`Server error: ${res.status}`)
+      }
+
       const data = await res.json()
       setMessages(prev => [...prev, {
         role: 'agent',
         content: data.response,
         timestamp: new Date()
       }])
-    } catch {
+    } catch (e: any) {
       setMessages(prev => [...prev, {
         role: 'agent',
         content: "Sorry, I encountered an error. Please try again.",
@@ -61,7 +77,7 @@ export function AgentChat() {
 
   return (
     <>
-      {/* Chat bubble */}
+      {/* Chat bubble button */}
       {!open && (
         <button
           onClick={() => setOpen(true)}
@@ -76,53 +92,67 @@ export function AgentChat() {
 
       {/* Chat window */}
       {open && (
-        <div className="fixed bottom-6 right-6 z-50 w-80 sm:w-96
-          rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+        <div
+          className="fixed bottom-6 right-6 z-50 rounded-2xl
+            overflow-hidden shadow-2xl flex flex-col
+            w-[90vw] sm:w-96"
           style={{
             background: 'var(--bg-card)',
             border: '1px solid var(--border)',
-            height: '500px'
-          }}>
-
+            height: '560px',
+            maxHeight: '80vh'
+          }}
+        >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3
-            border-b"
-            style={{
-              borderColor: 'var(--border)',
-              background: 'var(--accent)'
-            }}>
+          <div
+            className="flex items-center justify-between px-4 py-3 shrink-0"
+            style={{ background: 'var(--accent)' }}
+          >
             <div className="flex items-center gap-2">
               <Bot className="w-4 h-4 text-white" />
               <span className="text-sm font-bold text-white">
                 Lumiq Agent
               </span>
+              <div className="w-1.5 h-1.5 rounded-full bg-white
+                opacity-70 animate-pulse" />
             </div>
-            <button onClick={() => setOpen(false)}
-              className="text-white opacity-70 hover:opacity-100">
+            <button
+              onClick={() => setOpen(false)}
+              className="text-white opacity-70 hover:opacity-100
+                transition-opacity"
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg, i) => (
               <div key={i}
                 className={`flex items-start gap-2
-                  ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                <div className={`w-7 h-7 rounded-xl flex items-center
-                  justify-center shrink-0
-                  ${msg.role === 'agent'
-                    ? 'bg-[var(--accent)]'
-                    : 'bg-[var(--purple)]'}`}>
+                  ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+              >
+                {/* Avatar */}
+                <div
+                  className="w-7 h-7 rounded-xl flex items-center
+                    justify-center shrink-0 mt-0.5"
+                  style={{
+                    background: msg.role === 'agent'
+                      ? 'var(--accent)' : 'var(--purple)'
+                  }}
+                >
                   {msg.role === 'agent'
                     ? <Bot className="w-3.5 h-3.5 text-white" />
-                    : <User className="w-3.5 h-3.5 text-white" />}
+                    : <User className="w-3.5 h-3.5 text-white" />
+                  }
                 </div>
-                <div className={`max-w-[80%] px-3 py-2 rounded-2xl text-xs
-                  leading-relaxed
-                  ${msg.role === 'agent'
-                    ? 'rounded-tl-none'
-                    : 'rounded-tr-none'}`}
+
+                {/* Bubble */}
+                <div
+                  className={`max-w-[82%] px-3 py-2.5 rounded-2xl
+                    text-xs leading-relaxed
+                    ${msg.role === 'agent'
+                      ? 'rounded-tl-none' : 'rounded-tr-none'}`}
                   style={{
                     background: msg.role === 'agent'
                       ? 'var(--bg)' : 'var(--accent)',
@@ -130,33 +160,79 @@ export function AgentChat() {
                       ? 'var(--text-primary)' : 'white',
                     border: msg.role === 'agent'
                       ? '1px solid var(--border)' : 'none'
-                  }}>
-                  {msg.content}
+                  }}
+                >
+                  {msg.role === 'agent' ? (
+                    <div className="prose prose-xs max-w-none
+                      prose-headings:text-xs prose-headings:font-bold
+                      prose-p:text-xs prose-p:my-1
+                      prose-ul:text-xs prose-ul:my-1
+                      prose-li:my-0.5
+                      prose-strong:font-bold
+                      prose-table:text-xs
+                      prose-td:p-1 prose-th:p-1"
+                      style={{ color: 'var(--text-primary)' }}
+                    >
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p>{msg.content}</p>
+                  )}
                 </div>
               </div>
             ))}
+
+            {/* Loading indicator */}
             {loading && (
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-xl bg-[var(--accent)]
-                  flex items-center justify-center">
+              <div className="flex items-start gap-2">
+                <div className="w-7 h-7 rounded-xl flex items-center
+                  justify-center shrink-0"
+                  style={{ background: 'var(--accent)' }}>
                   <Bot className="w-3.5 h-3.5 text-white" />
                 </div>
-                <div className="px-3 py-2 rounded-2xl rounded-tl-none"
+                <div
+                  className="px-3 py-2.5 rounded-2xl rounded-tl-none
+                    flex items-center gap-2"
                   style={{
                     background: 'var(--bg)',
                     border: '1px solid var(--border)'
-                  }}>
+                  }}
+                >
                   <Loader2 className="w-3.5 h-3.5 animate-spin"
                     style={{ color: 'var(--accent)' }} />
+                  <span className="text-xs"
+                    style={{ color: 'var(--text-muted)' }}>
+                    Thinking...
+                  </span>
                 </div>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
 
+          {/* Quick prompts */}
+          <div className="px-3 pt-2 shrink-0 flex flex-wrap gap-1.5"
+            style={{ borderTop: '1px solid var(--border)' }}>
+            {QUICK_PROMPTS.map(prompt => (
+              <button
+                key={prompt}
+                onClick={() => sendMessage(prompt)}
+                disabled={loading}
+                className="text-xs px-2.5 py-1 rounded-lg
+                  transition-all hover:opacity-80 disabled:opacity-40"
+                style={{
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-secondary)'
+                }}
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
           {/* Input */}
-          <div className="p-3 border-t"
-            style={{ borderColor: 'var(--border)' }}>
+          <div className="p-3 shrink-0">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -164,7 +240,8 @@ export function AgentChat() {
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && sendMessage()}
                 placeholder="Ask about your feedback..."
-                className="flex-1 px-3 py-2 rounded-xl text-xs outline-none"
+                className="flex-1 px-3 py-2 rounded-xl text-xs
+                  outline-none transition-all"
                 style={{
                   background: 'var(--bg)',
                   border: '1px solid var(--border)',
@@ -172,34 +249,15 @@ export function AgentChat() {
                 }}
               />
               <button
-                onClick={sendMessage}
+                onClick={() => sendMessage()}
                 disabled={loading || !input.trim()}
                 className="w-8 h-8 rounded-xl flex items-center
                   justify-center transition-all hover:opacity-90
-                  disabled:opacity-50"
-                style={{ background: 'var(--accent)' }}>
+                  disabled:opacity-40 active:scale-95"
+                style={{ background: 'var(--accent)' }}
+              >
                 <Send className="w-3.5 h-3.5 text-white" />
               </button>
-            </div>
-
-            {/* Quick prompts */}
-            <div className="flex flex-wrap gap-1 mt-2">
-              {[
-                "Top 3 problems",
-                "Feedback summary",
-                "Show only bugs"
-              ].map(prompt => (
-                <button key={prompt}
-                  onClick={() => setInput(prompt)}
-                  className="text-xs px-2 py-1 rounded-lg transition-all"
-                  style={{
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text-secondary)'
-                  }}>
-                  {prompt}
-                </button>
-              ))}
             </div>
           </div>
         </div>

@@ -15,6 +15,7 @@ from backend.state import pipeline_state
 from backend.pipeline import run_full_pipeline, clear_all_data
 from db.init_db import get_session
 from db.schema import Insight, Cluster
+from agent.lumiq_agent import create_lumiq_agent, chat as agent_chat
 
 app = FastAPI(
     title="Lumiq API",
@@ -205,6 +206,29 @@ def reset_data():
     clear_all_data()
     return {"message": "All data cleared successfully."}
 
+
+# Create agent once at startup
+lumiq_agent = create_lumiq_agent()
+
+class ChatRequest(BaseModel):
+    message: str
+
+class ChatResponse(BaseModel):
+    response: str
+
+@app.post("/api/chat")
+def chat_with_agent(request: ChatRequest):
+    """
+    Conversational interface with the Lumiq agent.
+    The agent decides which tools to call based on the message.
+    """
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    try:
+        response = agent_chat(lumiq_agent, request.message)
+        return ChatResponse(response=response)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

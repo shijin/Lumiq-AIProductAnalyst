@@ -249,8 +249,6 @@ def ingest_from_public_sheet_url(url: str):
     Converts the URL to CSV export format — no auth needed.
     """
     try:
-        # Extract sheet ID from URL
-        # Handles: /spreadsheets/d/SHEET_ID/edit or /spreadsheets/d/SHEET_ID/
         import re
         match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url)
         if not match:
@@ -260,8 +258,6 @@ def ingest_from_public_sheet_url(url: str):
             )
 
         sheet_id = match.group(1)
-
-        # Extract gid (tab ID) if present
         gid_match = re.search(r'gid=(\d+)', url)
         gid = gid_match.group(1) if gid_match else '0'
 
@@ -272,15 +268,54 @@ def ingest_from_public_sheet_url(url: str):
         )
 
         print(f"Fetching public sheet: {csv_url}")
-        response = req.get(csv_url, timeout=30)
+
+        # Add browser-like headers to avoid Google blocking
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                         "AppleWebKit/537.36 (KHTML, like Gecko) "
+                         "Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;"
+                     "q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+        }
+
+        response = req.get(csv_url, headers=headers, timeout=30,
+                          allow_redirects=True)
+
+        print(f"Response status: {response.status_code}")
+        print(f"Content type: {response.headers.get('content-type', '')}")
 
         if response.status_code != 200:
             raise ValueError(
-                "Could not access Google Sheet. "
+                f"Could not access Google Sheet (status {response.status_code}). "
                 "Make sure the sheet is set to 'Anyone with the link can view'."
             )
 
-        df = pd.read_csv(io.StringIO(response.text))
+        # Check if we got HTML instead of CSV (happens when blocked)
+        content_type = response.headers.get('content-type', '')
+        if 'text/html' in content_type and 'csv' not in content_type:
+            # Try alternative export URL format
+            alt_url = (
+                f"https://docs.google.com/spreadsheets/d/{sheet_id}"
+                f"/gviz/tq?tqx=out:csv&gid={gid}"
+            )
+            print(f"Trying alternative URL: {alt_url}")
+            response = req.get(alt_url, headers=headers,
+                             timeout=30, allow_redirects=True)
+
+            if response.status_code != 200:
+                raise ValueError(
+                    "Could not access Google Sheet. "
+                    "Please make sure sharing is set to "
+                    "'Anyone with the link can view'."
+                )
+
+        # Try to parse as CSV
+        content = response.text
+        if not content.strip():
+            raise ValueError("Google Sheet appears to be empty.")
+
+        df = pd.read_csv(io.StringIO(content))
         print(f"Sheet loaded: {len(df)} rows, columns: {list(df.columns)}")
         return ingest_from_dataframe(df, source="google_sheet_url")
 

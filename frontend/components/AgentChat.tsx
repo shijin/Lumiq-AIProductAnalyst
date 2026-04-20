@@ -35,46 +35,61 @@ export function AgentChat() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const sendMessage = async (text?: string) => {
-    const userMsg = (text || input).trim()
-    if (!userMsg || loading) return
-    setInput('')
+const sendMessage = async (text?: string) => {
+  const userMsg = (text || input).trim()
+  if (!userMsg || loading) return
+  setInput('')
+
+  setMessages(prev => [...prev, {
+    role: 'user',
+    content: userMsg,
+    timestamp: new Date()
+  }])
+  setLoading(true)
+
+  try {
+    const res = await fetch(`${API_URL}/api/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: userMsg })
+    })
+
+    if (!res.ok) throw new Error(`Server error: ${res.status}`)
+
+    const data = await res.json()
+
+    // Handle both string and array response formats
+    let responseText = ''
+    if (typeof data.response === 'string') {
+      responseText = data.response
+    } else if (Array.isArray(data.response)) {
+      responseText = data.response
+        .map((item: any) =>
+          typeof item === 'string' ? item : item?.text || ''
+        )
+        .join('\n')
+    } else if (data.response?.text) {
+      responseText = data.response.text
+    } else {
+      responseText = JSON.stringify(data.response)
+    }
 
     setMessages(prev => [...prev, {
-      role: 'user',
-      content: userMsg,
+      role: 'agent',
+      content: responseText.trim(),
       timestamp: new Date()
     }])
-    setLoading(true)
 
-    try {
-      const res = await fetch(`${API_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg })
-      })
-
-      if (!res.ok) {
-        throw new Error(`Server error: ${res.status}`)
-      }
-
-      const data = await res.json()
-      setMessages(prev => [...prev, {
-        role: 'agent',
-        content: data.response,
-        timestamp: new Date()
-      }])
-    } catch (e: any) {
-      setMessages(prev => [...prev, {
-        role: 'agent',
-        content: "Sorry, I encountered an error. Please try again.",
-        timestamp: new Date()
-      }])
-    } finally {
-      setLoading(false)
-    }
+  } catch (e: any) {
+    setMessages(prev => [...prev, {
+      role: 'agent',
+      content: "Sorry, I encountered an error. Please try again.",
+      timestamp: new Date()
+    }])
+  } finally {
+    setLoading(false)
   }
-
+}
   return (
     <>
       {/* Chat bubble button */}

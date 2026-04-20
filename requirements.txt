@@ -1,5 +1,7 @@
 langchain
 langchain-anthropic
+langchain-core
+langchain-community
 anthropic
 chromadb
 psycopg2-binary

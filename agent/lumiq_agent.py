@@ -3,9 +3,10 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_anthropic import ChatAnthropic
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.memory import ConversationBufferMemory
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, AIMessage
+
 from agent.tools import (
     ingest_and_analyze,
     get_top_insights,
@@ -54,7 +55,7 @@ If no analysis has been run yet, ask the user to provide feedback data first.
 """
 
 def create_lumiq_agent():
-    """Create and return the Lumiq agent with memory."""
+    """Create and return the Lumiq agent."""
 
     llm = ChatAnthropic(
         model="claude-sonnet-4-6",
@@ -69,17 +70,11 @@ def create_lumiq_agent():
         MessagesPlaceholder(variable_name="agent_scratchpad"),
     ])
 
-    memory = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True
-    )
-
     agent = create_tool_calling_agent(llm, TOOLS, prompt)
 
     executor = AgentExecutor(
         agent=agent,
         tools=TOOLS,
-        memory=memory,
         verbose=True,
         max_iterations=5,
         handle_parsing_errors=True
@@ -88,9 +83,26 @@ def create_lumiq_agent():
     return executor
 
 
+# Store chat history in memory manually
+chat_history = []
+
 def chat(agent, user_message: str) -> str:
     """Send a message to the agent and get a response."""
-    response = agent.invoke({"input": user_message})
+    global chat_history
+
+    response = agent.invoke({
+        "input": user_message,
+        "chat_history": chat_history
+    })
+
+    # Update history
+    chat_history.append(HumanMessage(content=user_message))
+    chat_history.append(AIMessage(content=response["output"]))
+
+    # Keep last 10 messages to avoid context overflow
+    if len(chat_history) > 10:
+        chat_history = chat_history[-10:]
+
     return response["output"]
 
 

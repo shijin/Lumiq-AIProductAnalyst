@@ -57,17 +57,36 @@ export default function Dashboard() {
               </h1>
               <p className="text-sm mt-1.5"
                 style={{ color: 'var(--text-secondary)' }}>
-                AI-analyzed feedback — prioritized for your next sprint
+                AI-analyzed feedback - prioritized for your next sprint
               </p>
             </div>
             {pipelineStatus?.sheet_name && (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-xl card">
-                <FileSpreadsheet className="w-4 h-4"
-                  style={{ color: 'var(--accent)' }} />
-                <span className="text-sm font-semibold"
-                  style={{ color: 'var(--accent)' }}>
-                  {pipelineStatus.sheet_name}
-                </span>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl card">
+                  <FileSpreadsheet className="w-3.5 h-3.5"
+                    style={{ color: 'var(--accent)' }} />
+                  <span className="text-xs font-semibold"
+                    style={{ color: 'var(--accent)' }}>
+                    {/* Clean up the display name */}
+                    {pipelineStatus.sheet_name
+                      .replace('Google Sheet URL', 'Google Sheet')
+                      .replace('.csv', '')
+                      .trim()
+                    }
+                  </span>
+                </div>
+                {pipelineStatus.completed_at && (
+                  <span className="text-xs"
+                    style={{ color: 'var(--text-muted)' }}>
+                    Last analyzed:{' '}
+                    {new Date(pipelineStatus.completed_at).toLocaleDateString('en-IN', {
+                      day: 'numeric',
+                      month: 'short',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                )}
               </div>
             )}
           </div>

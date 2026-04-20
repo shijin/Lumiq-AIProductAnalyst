@@ -1,6 +1,7 @@
 import sys
 import os
 import threading
+import atexit
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -49,6 +50,18 @@ def run_full_pipeline(
             "Google Sheet URL" or "unknown"
         )
         pipeline_state.start(display_name)
+
+        # Register cleanup — if server restarts mid-pipeline,
+        # user sees a clear error instead of silent reset to 0%
+        def on_unexpected_exit():
+            if pipeline_state.running:
+                pipeline_state.fail(
+                    "Server restarted during analysis. "
+                    "Please run the analysis again — "
+                    "it will be faster now."
+                )
+
+        atexit.register(on_unexpected_exit)
 
         # ── Step 1: Clear existing data ──────────────────────────
         pipeline_state.update("Clearing existing data...", 5)

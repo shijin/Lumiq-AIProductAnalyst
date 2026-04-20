@@ -156,6 +156,10 @@ export function ProgressBar({ onComplete }: Props) {
         </div>
       )}
     </div>
+
+  )
+}
+
     {/* Server restart warning */}
     {status?.error?.includes('restarted') && (
       <div className="p-4 rounded-2xl"
@@ -181,5 +185,4 @@ export function ProgressBar({ onComplete }: Props) {
           Try Again
         </button>
       </div>
-)}
-
+    )}

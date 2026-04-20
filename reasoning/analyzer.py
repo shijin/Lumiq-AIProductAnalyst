@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from db.init_db import get_session
 from db.schema import Cluster, CleanedFeedback, FeedbackClusterMap, Insight
 from config.settings import ANTHROPIC_API_KEY
-import concurrent.futures
+
 
 anthropic_client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -90,54 +90,33 @@ def analyze_all_clusters():
     session.query(Insight).delete()
     session.commit()
 
-    # Filter out positive clusters
     problem_clusters = [
         c for c in clusters
         if not is_positive_cluster(c.cluster_label)
     ]
-    positive_count = len(clusters) - len(problem_clusters)
+    skipped = len(clusters) - len(problem_clusters)
 
-    # Fetch all samples upfront
-    cluster_data = []
-    for cluster in problem_clusters:
-        samples = get_cluster_feedback_samples(session, cluster.id)
-        cluster_data.append((cluster, samples))
+    print(f"Analysing {len(problem_clusters)} clusters sequentially...")
 
-    session.close()
-
-    print(f"Analysing {len(problem_clusters)} clusters in parallel...")
-
-    # Run Claude calls concurrently
-    results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {
-            executor.submit(analyze_cluster, cluster, samples): (cluster, samples)
-            for cluster, samples in cluster_data
-        }
-        for future in concurrent.futures.as_completed(futures):
-            cluster, samples = futures[future]
-            try:
-                analysis = future.result()
-                results.append((cluster, analysis))
-                print(f"  ✓ {cluster.cluster_label}")
-            except Exception as e:
-                print(f"  ✗ {cluster.cluster_label}: {e}")
-                results.append((cluster, {
-                    "root_cause": "Unable to determine root cause.",
-                    "contributing_factors": [],
-                    "affected_segment": "Unknown",
-                    "severity": "medium",
-                    "confidence": 0.0
-                }))
-
-    # Write all results to DB
-    session = get_session()
-    severity_map = {"critical": 1.0, "high": 0.75, "medium": 0.5, "low": 0.25}
+    severity_map = {
+        "critical": 1.0, "high": 0.75,
+        "medium": 0.5, "low": 0.25
+    }
     total_rows = session.query(FeedbackClusterMap).count()
 
-    for cluster, analysis in results:
-        severity_score = severity_map.get(analysis["severity"], 0.5)
-        frequency_score = round(cluster.feedback_count / total_rows, 4)
+    for cluster in problem_clusters:
+        print(f"\n  Processing: '{cluster.cluster_label}'")
+        samples = get_cluster_feedback_samples(session, cluster.id)
+        print(f"  → {len(samples)} unique samples")
+
+        analysis = analyze_cluster(cluster, samples)
+
+        severity_score = severity_map.get(
+            analysis["severity"], 0.5
+        )
+        frequency_score = round(
+            cluster.feedback_count / total_rows, 4
+        ) if total_rows > 0 else 0.0
         evidence = " | ".join(analysis["contributing_factors"])
 
         insight = Insight(
@@ -152,14 +131,15 @@ def analyze_all_clusters():
             evidence=evidence
         )
         session.add(insight)
+        session.commit()
 
-    session.commit()
+        print(f"  → Severity  : {analysis['severity']}")
+        print(f"  → Confidence: {analysis['confidence']}")
+
     session.close()
-
     print(f"\nRoot cause analysis complete.")
-    print(f"  Clusters analyzed : {len(results)}")
-    print(f"  Clusters skipped  : {positive_count} (positive)")
-
+    print(f"  Analyzed : {len(problem_clusters)}")
+    print(f"  Skipped  : {skipped} (positive clusters)")
 
 if __name__ == "__main__":
     analyze_all_clusters()

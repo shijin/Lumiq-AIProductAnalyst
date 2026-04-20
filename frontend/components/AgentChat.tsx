@@ -180,14 +180,13 @@ const sendMessage = async (text?: string) => {
                 >
                   {msg.role === 'agent' ? (
                   <div
-                    className="prose prose-sm max-w-none dark:prose-invert"
+                    className="agent-table prose prose-sm max-w-none dark:prose-invert"
                     style={{
                       color: 'var(--text-primary)',
                       fontSize: '12px',
                       lineHeight: '1.6'
                     }}
                   >
-                    <div className="agent-table prose prose-sm max-w-none">
                     <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                       components={{

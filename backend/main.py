@@ -6,7 +6,8 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -15,25 +16,30 @@ from backend.state import pipeline_state
 from backend.pipeline import run_full_pipeline, clear_all_data
 from db.init_db import get_session
 from db.schema import Insight, Cluster
-from agent.lumiq_agent import create_lumiq_agent, chat as agent_chat
 
-from contextlib import asynccontextmanager
-from sentence_transformers import SentenceTransformer
+# ── Try to load agent — optional, won't crash server if it fails ──
+lumiq_agent = None
+try:
+    from agent.lumiq_agent import create_lumiq_agent, chat as agent_chat
+    lumiq_agent = create_lumiq_agent()
+    print("Agent loaded successfully.")
+except Exception as e:
+    print(f"Agent load warning: {e}")
+    print("Chat endpoint will be unavailable but pipeline will work.")
 
-# Global preloaded model
-_embedder = None
 
+# ── Preload embedding model at startup ────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Preload models at startup — not during analysis."""
-    global _embedder
     print("Preloading sentence-transformers model...")
     try:
-        _embedder = SentenceTransformer('paraphrase-MiniLM-L3-v2')
+        from sentence_transformers import SentenceTransformer
+        SentenceTransformer('paraphrase-MiniLM-L3-v2')
         print("Model preloaded successfully.")
     except Exception as e:
         print(f"Model preload warning: {e}")
     yield
+
 
 app = FastAPI(
     title="Lumiq API",
@@ -51,20 +57,29 @@ app.add_middleware(
 )
 
 
+# ── Request models ────────────────────────────────────────────────
 class AnalyseRequest(BaseModel):
     sheet_name: str
-
 
 class SheetURLRequest(BaseModel):
     sheet_url: str
 
+class ChatRequest(BaseModel):
+    message: str
+
+
+# ── Routes ────────────────────────────────────────────────────────
 
 @app.get("/")
 def root():
-    return {"name": "Lumiq API", "version": "1.0.0", "status": "running"}
+    return {
+        "name": "Lumiq API",
+        "version": "1.0.0",
+        "status": "running",
+        "agent_available": lumiq_agent is not None
+    }
 
 
-# ── Sheet name (existing) ────────────────────────────────────────
 @app.post("/api/analyse")
 def start_analysis(request: AnalyseRequest):
     if pipeline_state.running:
@@ -73,7 +88,6 @@ def start_analysis(request: AnalyseRequest):
     if not request.sheet_name.strip():
         raise HTTPException(status_code=400,
             detail="sheet_name cannot be empty.")
-
     thread = threading.Thread(
         target=run_full_pipeline,
         kwargs={
@@ -83,26 +97,21 @@ def start_analysis(request: AnalyseRequest):
         daemon=True
     )
     thread.start()
-    return {"message": "Pipeline started", "source": "sheet_name",
-            "sheet_name": request.sheet_name.strip()}
+    return {"message": "Pipeline started", "source": "sheet_name"}
 
 
-# ── CSV upload ───────────────────────────────────────────────────
 @app.post("/api/analyse/csv")
 async def start_analysis_csv(file: UploadFile = File(...)):
     if pipeline_state.running:
         raise HTTPException(status_code=409,
             detail="Pipeline already running.")
-
     if not file.filename.endswith('.csv'):
         raise HTTPException(status_code=400,
             detail="Only CSV files are supported.")
-
     content = await file.read()
     if len(content) == 0:
         raise HTTPException(status_code=400,
             detail="Uploaded file is empty.")
-
     thread = threading.Thread(
         target=run_full_pipeline,
         kwargs={
@@ -117,17 +126,14 @@ async def start_analysis_csv(file: UploadFile = File(...)):
             "filename": file.filename}
 
 
-# ── Public Google Sheet URL ──────────────────────────────────────
 @app.post("/api/analyse/sheet-url")
 def start_analysis_sheet_url(request: SheetURLRequest):
     if pipeline_state.running:
         raise HTTPException(status_code=409,
             detail="Pipeline already running.")
-
     if "docs.google.com/spreadsheets" not in request.sheet_url:
         raise HTTPException(status_code=400,
             detail="Please provide a valid Google Sheets URL.")
-
     thread = threading.Thread(
         target=run_full_pipeline,
         kwargs={
@@ -140,13 +146,11 @@ def start_analysis_sheet_url(request: SheetURLRequest):
     return {"message": "Pipeline started", "source": "sheet_url"}
 
 
-# ── Status ───────────────────────────────────────────────────────
 @app.get("/api/status")
 def get_status():
     return pipeline_state.to_dict()
 
 
-# ── Insights ─────────────────────────────────────────────────────
 @app.get("/api/insights")
 def get_insights():
     session = get_session()
@@ -176,7 +180,6 @@ def get_insights():
         session.close()
 
 
-# ── Export CSV ───────────────────────────────────────────────────
 @app.get("/api/export")
 def export_insights():
     session = get_session()
@@ -216,7 +219,6 @@ def export_insights():
         session.close()
 
 
-# ── Reset ────────────────────────────────────────────────────────
 @app.delete("/api/reset")
 def reset_data():
     if pipeline_state.running:
@@ -226,28 +228,22 @@ def reset_data():
     return {"message": "All data cleared successfully."}
 
 
-# Create agent once at startup
-lumiq_agent = create_lumiq_agent()
-
-class ChatRequest(BaseModel):
-    message: str
-
-class ChatResponse(BaseModel):
-    response: str
-
 @app.post("/api/chat")
 def chat_with_agent(request: ChatRequest):
-    """
-    Conversational interface with the Lumiq agent.
-    The agent decides which tools to call based on the message.
-    """
+    if lumiq_agent is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Agent unavailable. LangChain import failed on this server."
+        )
     if not request.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
+        raise HTTPException(status_code=400,
+            detail="Message cannot be empty.")
     try:
         response = agent_chat(lumiq_agent, request.message)
-        return ChatResponse(response=response)
+        return {"response": response}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

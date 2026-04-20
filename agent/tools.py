@@ -2,7 +2,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from langchain.tools import tool
+from langchain_core.tools import tool
+#from langchain.tools import tool
 from db.init_db import get_session
 from db.schema import Insight, Cluster, RawFeedback, CleanedFeedback, FeedbackClusterMap
 from backend.pipeline import run_full_pipeline, clear_all_data

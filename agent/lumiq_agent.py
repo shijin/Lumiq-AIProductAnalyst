@@ -3,10 +3,11 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from langchain_anthropic import ChatAnthropic
-from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.agents import AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
-
+from langchain_core.tools import tool
+from langchain.agents import create_tool_calling_agent
 from agent.tools import (
     ingest_and_analyze,
     get_top_insights,

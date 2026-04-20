@@ -42,9 +42,11 @@ Rules:
 
 
 def is_positive_cluster(cluster_label: str) -> bool:
-    """Skip root cause analysis for positive feedback clusters."""
     label_lower = cluster_label.lower()
-    return any(keyword in label_lower for keyword in POSITIVE_CLUSTER_KEYWORDS)
+    return any(
+        keyword in label_lower
+        for keyword in POSITIVE_CLUSTER_KEYWORDS
+    )
 
 
 def get_cluster_feedback_samples(
@@ -52,7 +54,6 @@ def get_cluster_feedback_samples(
     cluster_id: int,
     max_samples: int = 10
 ) -> list[str]:
-    """Fetch feedback samples for a cluster."""
     mappings = session.query(FeedbackClusterMap).filter_by(
         cluster_id=cluster_id
     ).all()
@@ -63,7 +64,6 @@ def get_cluster_feedback_samples(
         CleanedFeedback.id.in_(cleaned_ids)
     ).all()
 
-    # Deduplicate samples for the prompt
     seen = set()
     samples = []
     for row in rows:
@@ -76,9 +76,9 @@ def get_cluster_feedback_samples(
 
     return samples
 
+
 def analyze_cluster(cluster: Cluster, samples: list[str]) -> dict:
     """Call Claude Sonnet to analyze root cause for one cluster."""
-
     formatted_samples = "\n".join(f"- {s}" for s in samples)
 
     prompt = ROOT_CAUSE_PROMPT.format(
@@ -114,7 +114,7 @@ def analyze_cluster(cluster: Cluster, samples: list[str]) -> dict:
         return result
 
     except Exception as e:
-        print(f"  Root cause analysis failed for '{cluster.cluster_label}': {e}")
+        print(f"  Failed for '{cluster.cluster_label}': {e}")
         return {
             "root_cause": "Unable to determine root cause automatically.",
             "contributing_factors": [],
@@ -122,7 +122,8 @@ def analyze_cluster(cluster: Cluster, samples: list[str]) -> dict:
             "severity": "medium",
             "confidence": 0.0
         }
-    
+
+
 def analyze_all_clusters():
     session = get_session()
     clusters = session.query(Cluster).all()
@@ -145,21 +146,21 @@ def analyze_all_clusters():
     print(f"Analysing {len(problem_clusters)} clusters sequentially...")
 
     severity_map = {
-        "critical": 1.0, "high": 0.75,
-        "medium": 0.5, "low": 0.25
+        "critical": 1.0,
+        "high": 0.75,
+        "medium": 0.5,
+        "low": 0.25
     }
     total_rows = session.query(FeedbackClusterMap).count()
 
     for cluster in problem_clusters:
         print(f"\n  Processing: '{cluster.cluster_label}'")
         samples = get_cluster_feedback_samples(session, cluster.id)
-        print(f"  → {len(samples)} unique samples")
+        print(f"  Samples: {len(samples)}")
 
         analysis = analyze_cluster(cluster, samples)
 
-        severity_score = severity_map.get(
-            analysis["severity"], 0.5
-        )
+        severity_score = severity_map.get(analysis["severity"], 0.5)
         frequency_score = round(
             cluster.feedback_count / total_rows, 4
         ) if total_rows > 0 else 0.0
@@ -179,13 +180,14 @@ def analyze_all_clusters():
         session.add(insight)
         session.commit()
 
-        print(f"  → Severity  : {analysis['severity']}")
-        print(f"  → Confidence: {analysis['confidence']}")
+        print(f"  Severity  : {analysis['severity']}")
+        print(f"  Confidence: {analysis['confidence']}")
 
     session.close()
     print(f"\nRoot cause analysis complete.")
     print(f"  Analyzed : {len(problem_clusters)}")
     print(f"  Skipped  : {skipped} (positive clusters)")
+
 
 if __name__ == "__main__":
     analyze_all_clusters()

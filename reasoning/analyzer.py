@@ -76,7 +76,53 @@ def get_cluster_feedback_samples(
 
     return samples
 
+def analyze_cluster(cluster: Cluster, samples: list[str]) -> dict:
+    """Call Claude Sonnet to analyze root cause for one cluster."""
 
+    formatted_samples = "\n".join(f"- {s}" for s in samples)
+
+    prompt = ROOT_CAUSE_PROMPT.format(
+        cluster_label=cluster.cluster_label,
+        feedback_samples=formatted_samples
+    )
+
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        raw = response.content[0].text.strip()
+
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        result = json.loads(raw)
+
+        required = [
+            "root_cause", "contributing_factors",
+            "affected_segment", "severity", "confidence"
+        ]
+        for field in required:
+            if field not in result:
+                raise ValueError(f"Missing field: {field}")
+
+        return result
+
+    except Exception as e:
+        print(f"  Root cause analysis failed for '{cluster.cluster_label}': {e}")
+        return {
+            "root_cause": "Unable to determine root cause automatically.",
+            "contributing_factors": [],
+            "affected_segment": "Unknown",
+            "severity": "medium",
+            "confidence": 0.0
+        }
+    
 def analyze_all_clusters():
     session = get_session()
     clusters = session.query(Cluster).all()

@@ -45,10 +45,15 @@ def run_full_pipeline(
     - sheet_url: public Google Sheet URL
     """
     try:
-        display_name = (
-            sheet_name or csv_filename or
-            "Google Sheet URL" or "unknown"
-        )
+        if source_type == "sheet_name":
+            display_name = sheet_name
+        elif source_type == "csv":
+            display_name = csv_filename.replace('.csv', '') if csv_filename else "CSV Upload"
+        elif source_type == "sheet_url":
+            # Extract a friendly name from the URL
+            display_name = "Google Sheet"
+        else:
+            display_name = "Unknown Source"
         pipeline_state.start(display_name)
 
         # Register cleanup — if server restarts mid-pipeline,

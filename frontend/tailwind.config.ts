@@ -11,7 +11,7 @@ const config: Config = {
     extend: {
       fontFamily: {
         display: ['Clash Display', 'sans-serif'],
-        sans:    ['Satoshi', 'sans-serif'],
+        sans: ['Satoshi', 'sans-serif'],
       },
       borderRadius: {
         '2xl': '16px',
@@ -20,6 +20,8 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'),
+  ],
 }
 export default config

@@ -178,21 +178,123 @@ const sendMessage = async (text?: string) => {
                   }}
                 >
                   {msg.role === 'agent' ? (
-                    <div className="prose prose-xs max-w-none
-                      prose-headings:text-xs prose-headings:font-bold
-                      prose-p:text-xs prose-p:my-1
-                      prose-ul:text-xs prose-ul:my-1
-                      prose-li:my-0.5
-                      prose-strong:font-bold
-                      prose-table:text-xs
-                      prose-td:p-1 prose-th:p-1"
-                      style={{ color: 'var(--text-primary)' }}
+                  <div
+                    className="prose prose-sm max-w-none dark:prose-invert"
+                    style={{
+                      color: 'var(--text-primary)',
+                      fontSize: '12px',
+                      lineHeight: '1.6'
+                    }}
+                  >
+                    <ReactMarkdown
+                      components={{
+                        table: ({node, ...props}) => (
+                          <div className="overflow-x-auto my-2">
+                            <table
+                              className="text-xs border-collapse w-full"
+                              style={{
+                                borderColor: 'var(--border)'
+                              }}
+                              {...props}
+                            />
+                          </div>
+                        ),
+                        th: ({node, ...props}) => (
+                          <th
+                            className="text-left px-2 py-1 text-xs font-bold"
+                            style={{
+                              background: 'var(--bg-card-hover)',
+                              borderBottom: '1px solid var(--border)',
+                              color: 'var(--text-primary)'
+                            }}
+                            {...props}
+                          />
+                        ),
+                        td: ({node, ...props}) => (
+                          <td
+                            className="px-2 py-1 text-xs"
+                            style={{
+                              borderBottom: '1px solid var(--border)',
+                              color: 'var(--text-primary)'
+                            }}
+                            {...props}
+                          />
+                        ),
+                        h3: ({node, ...props}) => (
+                          <h3
+                            className="text-xs font-bold mt-3 mb-1"
+                            style={{ color: 'var(--accent)' }}
+                            {...props}
+                          />
+                        ),
+                        h4: ({node, ...props}) => (
+                          <h4
+                            className="text-xs font-semibold mt-2 mb-1"
+                            style={{ color: 'var(--text-primary)' }}
+                            {...props}
+                          />
+                        ),
+                        p: ({node, ...props}) => (
+                          <p
+                            className="text-xs my-1 leading-relaxed"
+                            style={{ color: 'var(--text-primary)' }}
+                            {...props}
+                          />
+                        ),
+                        ul: ({node, ...props}) => (
+                          <ul
+                            className="text-xs my-1 pl-4 space-y-0.5 list-disc"
+                            style={{ color: 'var(--text-primary)' }}
+                            {...props}
+                          />
+                        ),
+                        ol: ({node, ...props}) => (
+                          <ol
+                            className="text-xs my-1 pl-4 space-y-0.5 list-decimal"
+                            style={{ color: 'var(--text-primary)' }}
+                            {...props}
+                          />
+                        ),
+                        li: ({node, ...props}) => (
+                          <li
+                            className="text-xs leading-relaxed"
+                            style={{ color: 'var(--text-primary)' }}
+                            {...props}
+                          />
+                        ),
+                        strong: ({node, ...props}) => (
+                          <strong
+                            className="font-bold"
+                            style={{ color: 'var(--text-primary)' }}
+                            {...props}
+                          />
+                        ),
+                        code: ({node, ...props}) => (
+                          <code
+                            className="text-xs px-1 py-0.5 rounded"
+                            style={{
+                              background: 'var(--bg-card-hover)',
+                              color: 'var(--accent)',
+                              fontFamily: 'monospace'
+                            }}
+                            {...props}
+                          />
+                        ),
+                        hr: ({node, ...props}) => (
+                          <hr
+                            className="my-2"
+                            style={{ borderColor: 'var(--border)' }}
+                            {...props}
+                          />
+                        ),
+                      }}
                     >
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p>{msg.content}</p>
-                  )}
+                      {msg.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-xs">{msg.content}</p>
+                )}
                 </div>
               </div>
             ))}

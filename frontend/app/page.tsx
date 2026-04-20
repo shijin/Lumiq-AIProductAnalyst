@@ -13,6 +13,7 @@ import { IntentChart } from '@/components/IntentChart'
 import { Navbar } from '@/components/Navbar'
 import { AnimatedSection } from '@/components/AnimatedSection'
 import { FileSpreadsheet } from 'lucide-react'
+import { AgentChat } from '@/components/AgentChat'
 
 export default function Dashboard() {
   const [insights, setInsights]   = useState<Insight[]>([])
@@ -140,6 +141,7 @@ export default function Dashboard() {
         }
 
       </main>
+      <AgentChat />
     </div>
   )
 }

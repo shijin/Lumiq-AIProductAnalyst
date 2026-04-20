@@ -12,7 +12,6 @@ import {
   FileSpreadsheet, Play, ArrowLeft,
   AlertCircle, Upload, Link, Sheet
 } from 'lucide-react'
-import { AgentChat } from '@/components/AgentChat'
 
 type Stage = 'input' | 'running'
 type InputMethod = 'csv' | 'sheet_url' | 'sheet_name'
@@ -359,7 +358,7 @@ export default function AnalysePage() {
         )}
 
       </main>
-      <AgentChat />
+
     </div>
   )
 }

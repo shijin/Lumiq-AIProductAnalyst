@@ -245,84 +245,85 @@ def ingest_from_csv_file(file_content: bytes, filename: str = "upload.csv"):
 
 def ingest_from_public_sheet_url(url: str):
     """
-    Ingest feedback from a public Google Sheet URL.
-    Converts the URL to CSV export format — no auth needed.
+    Ingest from public Google Sheet URL using service account.
+    Sheet must be set to 'Anyone with the link can view'.
     """
     try:
         import re
+        import gspread
+        from oauth2client.service_account import ServiceAccountCredentials
+
+        # Extract sheet ID
         match = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url)
         if not match:
             raise ValueError(
                 "Invalid Google Sheet URL. "
-                "Format: https://docs.google.com/spreadsheets/d/SHEET_ID/..."
+                "Please paste the full URL from your browser."
             )
 
         sheet_id = match.group(1)
         gid_match = re.search(r'gid=(\d+)', url)
-        gid = gid_match.group(1) if gid_match else '0'
+        gid = int(gid_match.group(1)) if gid_match else 0
 
-        # Build CSV export URL
-        csv_url = (
-            f"https://docs.google.com/spreadsheets/d/{sheet_id}"
-            f"/export?format=csv&gid={gid}"
+        print(f"Sheet ID: {sheet_id}, Tab: {gid}")
+
+        scope = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/spreadsheets.readonly"
+        ]
+
+        creds = ServiceAccountCredentials.from_json_keyfile_name(
+            GOOGLE_CREDENTIALS_PATH, scope
         )
+        client = gspread.authorize(creds)
 
-        print(f"Fetching public sheet: {csv_url}")
-
-        # Add browser-like headers to avoid Google blocking
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                         "AppleWebKit/537.36 (KHTML, like Gecko) "
-                         "Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;"
-                     "q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-        }
-
-        response = req.get(csv_url, headers=headers, timeout=30,
-                          allow_redirects=True)
-
-        print(f"Response status: {response.status_code}")
-        print(f"Content type: {response.headers.get('content-type', '')}")
-
-        if response.status_code != 200:
-            raise ValueError(
-                f"Could not access Google Sheet (status {response.status_code}). "
-                "Make sure the sheet is set to 'Anyone with the link can view'."
-            )
-
-        # Check if we got HTML instead of CSV (happens when blocked)
-        content_type = response.headers.get('content-type', '')
-        if 'text/html' in content_type and 'csv' not in content_type:
-            # Try alternative export URL format
-            alt_url = (
-                f"https://docs.google.com/spreadsheets/d/{sheet_id}"
-                f"/gviz/tq?tqx=out:csv&gid={gid}"
-            )
-            print(f"Trying alternative URL: {alt_url}")
-            response = req.get(alt_url, headers=headers,
-                             timeout=30, allow_redirects=True)
-
-            if response.status_code != 200:
+        try:
+            spreadsheet = client.open_by_key(sheet_id)
+        except gspread.exceptions.APIError as api_err:
+            error_str = str(api_err)
+            if '403' in error_str or 'PERMISSION_DENIED' in error_str:
                 raise ValueError(
-                    "Could not access Google Sheet. "
-                    "Please make sure sharing is set to "
-                    "'Anyone with the link can view'."
+                    "Permission denied. Please make sure your Google Sheet "
+                    "sharing is set to 'Anyone with the link can view'. "
+                    "In Google Sheets: Share → Change to Anyone with the link → Viewer."
                 )
+            elif '404' in error_str:
+                raise ValueError(
+                    "Sheet not found. Please check the URL is correct."
+                )
+            else:
+                raise ValueError(f"Could not access sheet: {error_str}")
 
-        # Try to parse as CSV
-        content = response.text
-        if not content.strip():
-            raise ValueError("Google Sheet appears to be empty.")
+        # Get the right worksheet by gid
+        try:
+            if gid == 0:
+                sheet = spreadsheet.sheet1
+            else:
+                worksheets = spreadsheet.worksheets()
+                sheet = next(
+                    (ws for ws in worksheets if ws.id == gid),
+                    spreadsheet.sheet1
+                )
+        except Exception:
+            sheet = spreadsheet.sheet1
 
-        df = pd.read_csv(io.StringIO(content))
-        print(f"Sheet loaded: {len(df)} rows, columns: {list(df.columns)}")
+        print(f"Reading worksheet: {sheet.title}")
+        data = sheet.get_all_records()
+
+        if not data:
+            raise ValueError(
+                "The sheet appears to be empty or has no data rows."
+            )
+
+        df = pd.DataFrame(data)
+        print(f"Loaded: {len(df)} rows, columns: {list(df.columns)}")
         return ingest_from_dataframe(df, source="google_sheet_url")
 
     except ValueError:
         raise
     except Exception as e:
-        raise ValueError(f"Failed to fetch Google Sheet: {e}")
+        raise ValueError(f"Failed to fetch Google Sheet: {str(e)}")
 
 if __name__ == "__main__":
     ingest_from_google_sheets()

@@ -70,13 +70,25 @@ export default function AnalysePage() {
   }
 
   const TAB_METHODS = [
-    { id: 'csv' as InputMethod, label: 'Upload CSV',
-      icon: Upload, desc: 'Works with any tool' },
-    { id: 'sheet_url' as InputMethod, label: 'Sheet URL',
-      icon: Link, desc: 'Public Google Sheet' },
-    { id: 'sheet_name' as InputMethod, label: 'Sheet Name',
-      icon: Sheet, desc: 'Your connected sheet' },
-  ]
+  {
+    id: 'csv' as InputMethod,
+    label: 'Upload CSV',
+    icon: Upload,
+    desc: 'Easiest — works for all'
+  },
+  {
+    id: 'sheet_url' as InputMethod,
+    label: 'Google Sheet URL',
+    icon: Link,
+    desc: 'Share sheet with us first'
+  },
+  {
+    id: 'sheet_name' as InputMethod,
+    label: 'Sheet Name',
+    icon: Sheet,
+    desc: 'For Lumiq team only'
+  },
+]
 
   return (
     <div style={{ background: 'var(--bg)', minHeight: '100vh' }}
@@ -134,6 +146,14 @@ export default function AnalysePage() {
                       color: method === m.id
                         ? 'var(--accent)' : 'var(--text-secondary)'
                     }}>
+                    {/* Recommended badge on CSV */}
+                    {m.id === 'csv' && (
+                      <span className="absolute -top-2 left-1/2 -translate-x-1/2
+                        text-xs px-2 py-0.5 rounded-full font-bold text-white"
+                        style={{ background: 'var(--success)', fontSize: '9px' }}>
+                        RECOMMENDED
+                      </span>
+                    )}
                     <m.icon className="w-4 h-4" />
                     <span className="text-xs font-semibold">{m.label}</span>
                     <span className="text-xs opacity-60 hidden sm:block">
@@ -209,47 +229,106 @@ export default function AnalysePage() {
 
               {/* Sheet URL */}
               {method === 'sheet_url' && (
-                <div>
-                  <label className="block text-sm font-semibold mb-2"
-                    style={{ color: 'var(--text-primary)' }}>
-                    Public Google Sheet URL
-                  </label>
-                  <div className="relative">
-                    <Link className="absolute left-3.5 top-1/2
-                      -translate-y-1/2 w-4 h-4"
-                      style={{ color: 'var(--text-muted)' }} />
-                    <input type="text" value={sheetUrl}
-                      onChange={e => {
-                        setSheetUrl(e.target.value); setError('')
-                      }}
-                      placeholder="https://docs.google.com/spreadsheets/d/..."
-                      className="w-full pl-10 pr-4 py-3 rounded-xl
-                        text-sm outline-none"
-                      style={{
-                        background: 'var(--bg)',
-                        border: `1.5px solid ${error
-                          ? 'var(--danger)' : 'var(--border)'}`,
-                        color: 'var(--text-primary)',
-                      }} />
-                  </div>
-                  <div className="mt-3 p-3 rounded-xl"
+              <div>
+                <label className="block text-sm font-semibold mb-2"
+                  style={{ color: 'var(--text-primary)' }}>
+                  Google Sheet URL
+                </label>
+                <div className="relative">
+                  <Link className="absolute left-3.5 top-1/2
+                    -translate-y-1/2 w-4 h-4"
+                    style={{ color: 'var(--text-muted)' }} />
+                  <input type="text" value={sheetUrl}
+                    onChange={e => { setSheetUrl(e.target.value); setError('') }}
+                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                    className="w-full pl-10 pr-4 py-3 rounded-xl
+                      text-sm outline-none"
                     style={{
-                      background: 'var(--info-light)',
-                      border: '1px solid rgba(96,165,250,0.2)'
-                    }}>
-                    <p className="text-xs font-semibold mb-1"
-                      style={{ color: 'var(--info)' }}>
-                      How to share your sheet
-                    </p>
-                    <p className="text-xs"
-                      style={{ color: 'var(--text-secondary)' }}>
-                      In Google Sheets → Share → Anyone with the link →
-                      Viewer → Copy link
-                    </p>
+                      background: 'var(--bg)',
+                      border: `1.5px solid ${error
+                        ? 'var(--danger)' : 'var(--border)'}`,
+                      color: 'var(--text-primary)',
+                    }} />
+                </div>
+
+                {/* Step by step instructions */}
+                <div className="mt-3 p-4 rounded-2xl space-y-3"
+                  style={{
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border)'
+                  }}>
+                  <p className="text-xs font-bold uppercase tracking-widest"
+                    style={{ color: 'var(--text-muted)' }}>
+                    2 steps to connect your sheet
+                  </p>
+
+                  {/* Step 1 */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full flex items-center
+                      justify-center text-xs font-bold text-white shrink-0 mt-0.5"
+                      style={{ background: 'var(--accent)' }}>
+                      1
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold mb-1"
+                        style={{ color: 'var(--text-primary)' }}>
+                        Share with Lumiq service account
+                      </p>
+                      <p className="text-xs mb-2"
+                        style={{ color: 'var(--text-secondary)' }}>
+                        In Google Sheets → Share → Add this email as Viewer:
+                      </p>
+                      <div
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                        style={{
+                          background: 'var(--bg-card)',
+                          border: '1px solid var(--border)'
+                        }}>
+                        <code className="text-xs flex-1"
+                          style={{ color: 'var(--accent)' }}>
+                          {process.env.NEXT_PUBLIC_SERVICE_ACCOUNT_EMAIL
+                            || 'lumiq-sheets@your-project.iam.gserviceaccount.com'}
+                        </code>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              process.env.NEXT_PUBLIC_SERVICE_ACCOUNT_EMAIL || ''
+                            )
+                          }}
+                          className="text-xs px-2 py-1 rounded-lg transition-all"
+                          style={{
+                            background: 'var(--accent-light)',
+                            color: 'var(--accent)'
+                          }}>
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full flex items-center
+                      justify-center text-xs font-bold text-white shrink-0 mt-0.5"
+                      style={{ background: 'var(--accent)' }}>
+                      2
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold mb-1"
+                        style={{ color: 'var(--text-primary)' }}>
+                        Paste the sheet URL above
+                      </p>
+                      <p className="text-xs"
+                        style={{ color: 'var(--text-secondary)' }}>
+                        Copy the URL from your browser and paste it above.
+                        Make sure sharing is also set to
+                        "Anyone with the link can view".
+                      </p>
+                    </div>
                   </div>
                 </div>
-              )}
-
+              </div>
+            )}
               {/* Sheet name */}
               {method === 'sheet_name' && (
                 <div>

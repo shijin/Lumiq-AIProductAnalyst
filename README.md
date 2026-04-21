@@ -57,31 +57,29 @@ Lumiq compresses hours of manual analysis into minutes and makes the output expl
 
 ![System Architecture](https://your-architecture-image-url-here.png)
 
-Add your Napkin AI architecture diagram link or image here.
+### Pipeline Overview  
 
-### Pipeline Overview
-
-User Input (CSV / Google Sheet URL / Sheet Name)
-↓
-[1] Ingestion — Load feedback rows into Supabase
-↓
-[2] Language Detection — Detect en / hi / hinglish
-↓
-[3] Translation — Translate to English via deep-translator
-↓
-[4] Intent Classification — Claude Haiku (batched)
-↓
-[5] Cleaning — Rule-based + VADER sentiment detection
-↓
-[6] Clustering — TF-IDF + SVD + K-Means (auto cluster count)
-↓
-[7] Root Cause Analysis — Claude Sonnet (per cluster)
-↓
-[8] Scoring — Weighted formula (impact × frequency × severity)
-↓
-[9] Insight Generation — Claude Sonnet (recommendations)
-↓
-Dashboard + Conversational Agent
+User Input (CSV / Google Sheet URL / Sheet Name)  
+↓  
+[1] Ingestion — Load feedback rows into Supabase  
+↓  
+[2] Language Detection — Detect en / hi / hinglish  
+↓  
+[3] Translation — Translate to English via deep-translator  
+↓  
+[4] Intent Classification — Claude Haiku (batched)  
+↓  
+[5] Cleaning — Rule-based + VADER sentiment detection  
+↓  
+[6] Clustering — TF-IDF + SVD + K-Means (auto cluster count)  
+↓  
+[7] Root Cause Analysis — Claude Sonnet (per cluster)  
+↓  
+[8] Scoring — Weighted formula (impact × frequency × severity)  
+↓  
+[9] Insight Generation — Claude Sonnet (recommendations)  
+↓  
+Dashboard + Conversational Agent  
 
 ---
 
@@ -119,49 +117,49 @@ Dashboard + Conversational Agent
 
 ---
 
-## 📁 Project Structure
-lumiq/
-├── agent/                    # LangChain agent + tools
-│   ├── lumiq_agent.py        # Agent definition + memory
-│   └── tools.py              # 5 agent tools
-├── backend/                  # FastAPI application
-│   ├── main.py               # API routes
-│   ├── pipeline.py           # Pipeline orchestrator
-│   └── state.py              # Pipeline state management
-├── cleaning/                 # Text cleaning module
-│   └── cleaner.py
-├── clustering/               # Feedback clustering
-│   └── clusterer.py
-├── config/                   # Configuration
-│   └── settings.py
-├── db/                       # Database layer
-│   ├── init_db.py
-│   └── schema.py
-├── ingestion/                # Data ingestion
-│   └── ingest.py
-├── output/                   # Insight generation
-│   └── reporter.py
-├── preprocessing/            # Language + intent pipeline
-│   ├── detector.py
-│   ├── intent_classifier.py
-│   ├── preprocessor.py
-│   └── translator.py
-├── reasoning/                # Root cause analysis
-│   └── analyzer.py
-├── scoring/                  # Priority scoring
-│   └── prioritizer.py
-└── frontend/                 # Next.js dashboard
-├── app/
-│   ├── page.tsx           # Dashboard
-│   ├── analyse/           # New analysis page
-│   ├── feedback/          # Feedback explorer
-│   └── clusters/          # Cluster breakdown
-└── components/
-├── AgentChat.tsx      # Conversational agent UI
-├── InsightCard.tsx    # Priority insight cards
-├── Navbar.tsx         # Navigation
-├── SentimentChart.tsx # Donut chart
-└── IntentChart.tsx    # Bar chart
+## 📁 Project Structure  
+lumiq/  
+├── agent/                    # LangChain agent + tools  
+│   ├── lumiq_agent.py        # Agent definition + memory  
+│   └── tools.py              # 5 agent tools  
+├── backend/                  # FastAPI application  
+│   ├── main.py               # API routes  
+│   ├── pipeline.py           # Pipeline orchestrator  
+│   └── state.py              # Pipeline state management  
+├── cleaning/                 # Text cleaning module  
+│   └── cleaner.py  
+├── clustering/               # Feedback clustering  
+│   └── clusterer.py  
+├── config/                   # Configuration  
+│   └── settings.py  
+├── db/                       # Database layer  
+│   ├── init_db.py  
+│   └── schema.py   
+├── ingestion/                # Data ingestion  
+│   └── ingest.py  
+├── output/                   # Insight generation  
+│   └── reporter.py  
+├── preprocessing/            # Language + intent pipeline  
+│   ├── detector.py  
+│   ├── intent_classifier.py  
+│   ├── preprocessor.py  
+│   └── translator.py  
+├── reasoning/                # Root cause analysis  
+│   └── analyzer.py  
+├── scoring/                  # Priority scoring  
+│   └── prioritizer.py  
+└── frontend/                 # Next.js dashboard  
+├── app/  
+│   ├── page.tsx           # Dashboard  
+│   ├── analyse/           # New analysis page  
+│   ├── feedback/          # Feedback explorer  
+│   └── clusters/          # Cluster breakdown  
+└── components/  
+├── AgentChat.tsx      # Conversational agent UI  
+├── InsightCard.tsx    # Priority insight cards  
+├── Navbar.tsx         # Navigation  
+├── SentimentChart.tsx # Donut chart  
+└── IntentChart.tsx    # Bar chart  
 
 ---
 
@@ -241,21 +239,21 @@ Frontend available at: `http://localhost:3000`
 
 ## 📊 How to Use Lumiq
 
-### Option 1 — Upload CSV (Recommended)
+### Option 1 —- Upload CSV (Recommended)
 
 1. Export your feedback as CSV from any tool
 2. Make sure the file has a `feedback_text` column
 3. Optional columns: `submitted_at`, `source`
 4. Click **New Analysis** → Upload CSV → Run Analysis
 
-### Option 2 — Google Sheet URL
+### Option 2 - Google Sheet URL
 
 1. Open your Google Sheet
 2. Share the sheet with the Lumiq service account email
 3. Set sharing to **Anyone with the link can view**
 4. Copy the sheet URL and paste it in the URL field
 
-### Option 3 — Sheet Name
+### Option 3 - Sheet Name
 
 For internal use only — requires the sheet to be 
 pre-shared with the service account.
@@ -275,11 +273,11 @@ Example questions you can ask:
 "What should engineering work on in the next sprint?"
 
 The agent uses 5 tools to answer your questions:
-- `get_feedback_summary` — Overview statistics
-- `get_top_insights` — Priority ranked problems
-- `explain_insight` — Deep dive on any cluster
-- `filter_by_intent` — Filter by bug, complaint, churn etc.
-- `ingest_and_analyze` — Trigger new analysis
+- `get_feedback_summary` - Overview statistics
+- `get_top_insights` - Priority ranked problems
+- `explain_insight` - Deep dive on any cluster
+- `filter_by_intent` - Filter by bug, complaint, churn etc.
+- `ingest_and_analyze` - Trigger new analysis
 
 ---
 

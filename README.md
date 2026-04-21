@@ -12,7 +12,7 @@
 | | |
 |---|---|
 | **Live Product** | [Link](https://lumiq-ai-product-analyst.vercel.app) |
-| **Video Walkthrough** | Add your video walkthrough link here |
+| **Video Walkthrough** | [Link](https://youtu.be/9eOQFtS3FQw) |
 
 ---
 
@@ -238,7 +238,7 @@ Frontend available at: `http://localhost:3000`
 
 ## 📊 How to Use Lumiq
 
-### Option 1 —- Upload CSV (Recommended)
+### Option 1 - Upload CSV (Recommended)
 
 1. Export your feedback as CSV from any tool
 2. Make sure the file has a `feedback_text` column

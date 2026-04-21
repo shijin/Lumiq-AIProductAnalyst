@@ -28,6 +28,16 @@ export default function AnalysePage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
 
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+      navigator.clipboard.writeText(
+        process.env.NEXT_PUBLIC_SERVICE_ACCOUNT_EMAIL || ''
+      )
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+  }
+
   const handleStart = async () => {
     setError('')
     setLoading(true)
@@ -290,17 +300,16 @@ export default function AnalysePage() {
                             || 'lumiq-sheets@your-project.iam.gserviceaccount.com'}
                         </code>
                         <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(
-                              process.env.NEXT_PUBLIC_SERVICE_ACCOUNT_EMAIL || ''
-                            )
-                          }}
+                          onClick={handleCopy}
                           className="text-xs px-2 py-1 rounded-lg transition-all"
                           style={{
-                            background: 'var(--accent-light)',
-                            color: 'var(--accent)'
+                            background: copied ? 'var(--success-light)' : 'var(--accent-light)',
+                            color: copied ? 'var(--success)' : 'var(--accent)',
+                            border: copied
+                              ? '1px solid rgba(22,163,74,0.2)'
+                              : '1px solid rgba(249,115,22,0.2)'
                           }}>
-                          Copy
+                          {copied ? '✓ Copied!' : 'Copy'}
                         </button>
                       </div>
                     </div>

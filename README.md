@@ -3,7 +3,7 @@
 > Turn messy user feedback into clear, prioritized, 
 > and actionable product insights — automatically.
 
-![Lumiq Dashboard](https://your-screenshot-url-here.png)
+![Lumiq Dashboard](images/lumiq_dashboard.png)
 
 ---
 
@@ -13,7 +13,6 @@
 |---|---|
 | **Live Product** | [Link](https://lumiq-ai-product-analyst.vercel.app) |
 | **Video Walkthrough** | Add your video walkthrough link here |
-| **System Architecture** | Add your Napkin AI architecture link here |
 
 ---
 
@@ -55,7 +54,7 @@ Lumiq compresses hours of manual analysis into minutes and makes the output expl
 
 ## 🏗️ System Architecture
 
-![System Architecture](https://your-architecture-image-url-here.png)
+![System Architecture](images/lumiq_aifeedbackagent.JPG)
 
 ### Pipeline Overview  
 
